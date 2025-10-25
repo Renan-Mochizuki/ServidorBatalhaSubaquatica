@@ -1,9 +1,21 @@
 import java.io.*;
 import java.net.*;
 
+// Declarando uma classe Constants para armazenar constantes do jogo
+// (Java não suporta declarações de constantes fora de classes)
+class Constants {
+  static final int PORTA_SERVIDOR = 9876;
+  static final int TAMANHO_TABULEIRO = 16;
+  static final int MODO_DETECCAO = 1; // 0 para detecção em formato quadrado, 1 para formato de losango
+  static final int ALCANCE_DETECCAO = 2;
+  static final int NUMERO_JOGADORES = 2;
+  static final int NUMERO_MAX_DISPOSITIVOS_JOGADOR = 4;
+}
+
+// Classe para representar uma posição no tabuleiro
 class Posicao {
-  int x;
-  int y;
+  private int x;
+  private int y;
 
   Posicao(int x, int y) {
     this.x = x;
@@ -18,78 +30,130 @@ class Posicao {
     return this.y;
   }
 
-  Boolean detectar(Posicao posicao, int alcance) {
-    int distanciaX = Math.abs(this.x - posicao.x);
-    int distanciaY = Math.abs(this.y - posicao.y);
-    int distanciaTotal = distanciaX + distanciaY;
-    return alcance >= distanciaTotal;
-  }
-}
-
-class Jogador {
-  String nome;
-  int numDispositivo;
-  Posicao posicao;
-
-  Jogador(String nome, int x, int y) {
-    this.nome = nome;
-    this.numDispositivo = 3;
-    this.posicao = new Posicao(x, y);
-  }
-
-  String getNome() {
-    return this.nome;
-  }
-
-  Posicao getPosicao() {
-    return this.posicao;
-  }
-
-  Boolean mover(int movimentoX, int movimentoY) {
-    int novoX = this.posicao.x + movimentoX;
-    int novoY = this.posicao.y + movimentoY;
-    if (novoX < 0 || novoX >= 10 || novoY < 0 || novoY >= 10) {
+  Boolean setX(int x) {
+    // Verifica se o valor está dentro dos limites do tabuleiro
+    if (x < 0 || x >= Constants.TAMANHO_TABULEIRO) {
       return false;
     }
-    this.posicao.x += movimentoX;
-    this.posicao.y += movimentoY;
+    this.x = x;
+    return true;
+  }
+
+  Boolean setY(int y) {
+    // Verifica se o valor está dentro dos limites do tabuleiro
+    if (y < 0 || y >= Constants.TAMANHO_TABULEIRO) {
+      return false;
+    }
+    this.y = y;
     return true;
   }
 }
 
-class Dispositivo {
-  Posicao posicao;
-  int alcance;
+class Jogador {
+  private String nome;
+  private Posicao posicao;
+  private int numDispositivos;
+  private int numMaxDispositivos;
 
-  Dispositivo(int x, int y, int alcance) {
+  public Jogador(String nome, int x, int y, int numMaxDispositivos) {
+    this.nome = nome;
     this.posicao = new Posicao(x, y);
-    this.alcance = alcance;
+    this.numDispositivos = 0;
+    this.numMaxDispositivos = numMaxDispositivos;
   }
 
-  Posicao getPosicao() {
+  public String getNome() {
+    return this.nome;
+  }
+
+  public Posicao getPosicao() {
     return this.posicao;
   }
 
-  int getAlcance() {
+  // Método para mover o jogador de acordo com um deslocamento em X e Y
+  public Boolean mover(int deslocamentoX, int deslocamentoY) {
+    int novoX = posicao.getX() + deslocamentoX;
+    int novoY = posicao.getY() + deslocamentoY;
+    if (novoX < 0 || novoX >= Constants.TAMANHO_TABULEIRO || novoY < 0 || novoY >= Constants.TAMANHO_TABULEIRO) {
+      return false;
+    }
+    this.posicao.setX(novoX);
+    this.posicao.setY(novoY);
+    return true;
+  }
+
+  // Método para adicionar dispositivo
+  public Boolean adicionarDispositivo() {
+    if (this.numDispositivos < this.numMaxDispositivos) {
+      this.numDispositivos++;
+      return true;
+    }
+    return false;
+  }
+
+  // Método para remover dispositivo
+  public Boolean removerDispositivo() {
+    if (this.numDispositivos > 0) {
+      this.numDispositivos--;
+      return true;
+    }
+    return false;
+  }
+}
+
+class DispositivoProximidade {
+  private Posicao posicao;
+  private int alcance;
+  private Jogador jogadorDono;
+
+  public DispositivoProximidade(int x, int y, int alcance, Jogador jogadorDono) {
+    this.posicao = new Posicao(x, y);
+    this.alcance = alcance;
+    this.jogadorDono = jogadorDono;
+  }
+
+  public Posicao getPosicao() {
+    return this.posicao;
+  }
+
+  public int getAlcance() {
     return this.alcance;
   }
 
-  Boolean detectar(Posicao posicao) {
-    return this.posicao.detectar(posicao, this.alcance);
+  // Método que recebe um jogador e calcula a distância, se
+  // estiver dentro do alcance determinado retorna true
+  public Boolean detectarJogador(Jogador jogador) {
+    // Não detecta o jogador dono do dispositivo
+    if (jogador == this.jogadorDono) {
+      return false;
+    }
+
+    int distanciaX = Math.abs(this.posicao.getX() - jogador.getPosicao().getX());
+    int distanciaY = Math.abs(this.posicao.getY() - jogador.getPosicao().getY());
+
+    // Modo de detecção em formato de quadrado
+    if (Constants.MODO_DETECCAO == 0) {
+      return distanciaX <= alcance && distanciaY <= alcance;
+    }
+    // Modo de detecção em formato de losango
+    int distanciaTotal = distanciaX + distanciaY;
+    return distanciaTotal <= alcance;
   }
 }
 
 public class Server {
 
-  static Jogador jogador1;
-  static Dispositivo dispositivo1;
+  // static Jogador jogador1;
+  // static Dispositivo dispositivo1;
 
-  // Declarando metódo como synchronized para evitar condições de corrida
-  static synchronized void Imprimir(Jogador jogador1, Dispositivo dispositivo1) {
-    System.out.println("  0 1 2 3 4 5 6 7 8 9");
-    for (int i = 0; i < 10; i++) {
+  static synchronized void TempImprimir(Jogador jogador1, DispositivoProximidade dispositivo1) {
+    for (int i = 0; i < Constants.TAMANHO_TABULEIRO; i++) {
+      System.out.print(" " + i);
+    }
+    System.out.println("");
+    for (int i = 0; i < Constants.TAMANHO_TABULEIRO; i++) {
       System.out.print(i + " ");
-      for (int j = 0; j < 10; j++) {
+      for (int j = 0; j < Constants.TAMANHO_TABULEIRO; j++) {
         if (j == dispositivo1.getPosicao().getX() && i == dispositivo1.getPosicao().getY()) {
           System.out.print("X ");
         } else if (j == jogador1.getPosicao().getX() && i == jogador1.getPosicao().getY()) {
@@ -102,10 +166,10 @@ public class Server {
     }
   }
 
-  static class ClientThread extends Thread {
+  static class ClientHandler extends Thread {
     private Socket connectionSocket;
 
-    public ClientThread(Socket socket) {
+    public ClientHandler(Socket socket) {
       this.connectionSocket = socket;
     }
 
@@ -116,56 +180,43 @@ public class Server {
         String sentence;
 
         while ((sentence = inFromClient.readLine()) != null) {
-          // Declara a classe Server como uma região crítica dessa parte do código
-          synchronized (Server.class) {
-            System.out.println("RECEIVED: " + sentence);
-            int[] ataque = new int[] { -1, -1 };
-            if (sentence.contains(" ")) {
-              String[] partes = sentence.split(" ");
-              ataque[0] = Integer.parseInt(partes[0]);
-              ataque[1] = Integer.parseInt(partes[1]);
-              dispositivo1 = new Dispositivo(ataque[1], ataque[0], 2);
-            }
-            switch (sentence) {
-              case "w":
-                jogador1.mover(0, -1);
-                break;
-              case "a":
-                jogador1.mover(-1, 0);
-                break;
-              case "s":
-                jogador1.mover(0, 1);
-                break;
-              case "d":
-                jogador1.mover(1, 0);
-                break;
-            }
-            Imprimir(jogador1, dispositivo1);
-            if (dispositivo1.detectar(jogador1.getPosicao())) {
-              System.out.println("Jogador detectado pelo dispositivo!");
-            }
+          switch (sentence.toUpperCase()) {
+            case "MOVE":
+              outToClient.writeBytes(connectionSocket.getRemoteSocketAddress() + "\n");
+              break;
+            default:
+              outToClient.writeBytes("COMANDO DESCONHECIDO\n");
+              break;
           }
         }
-        connectionSocket.close();
       } catch (Exception e) {
         e.printStackTrace();
+      } finally {
+        try {
+          connectionSocket.close();
+        } catch (IOException e) {
+          e.printStackTrace();
+        }
       }
     }
   }
 
   public static void main(String[] args) throws Exception {
-    ServerSocket welcomeSocket = new ServerSocket(9876);
+    ServerSocket welcomeSocket = new ServerSocket(Constants.PORTA_SERVIDOR);
+    System.out.println("Servidor iniciado na porta " + Constants.PORTA_SERVIDOR);
 
-    jogador1 = new Jogador("Alice", 0, 0);
-    dispositivo1 = new Dispositivo(-10, -10, 2);
-    Imprimir(jogador1, dispositivo1);
-
-    System.out.println("Servidor iniciado na porta 9876...");
-
-    while (true) {
-      Socket connectionSocket = welcomeSocket.accept();
-      ClientThread ClientThread = new ClientThread(connectionSocket);
-      ClientThread.start();
+    try {
+      while (true) {
+        // Aceite todas as conexões de entrada
+        Socket connectionSocket = welcomeSocket.accept();
+        // Declarando um ClientHandler (thread) para cada conexão
+        ClientHandler clientHandler = new ClientHandler(connectionSocket);
+        clientHandler.start();
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+    } finally {
+      welcomeSocket.close();
     }
   }
 }

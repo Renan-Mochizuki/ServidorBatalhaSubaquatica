@@ -12,9 +12,9 @@ public class Client {
       BufferedReader inFromServer = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
       System.out.print("Enter a sentence: ");
       sentence = inFromUser.readLine();
-      outToServer.writeBytes(sentence);
-      // modifiedSentence = inFromServer.readLine();
-      // System.out.println("FROM SERVER: " + modifiedSentence);
+      outToServer.writeBytes(sentence + "\n");
+      modifiedSentence = inFromServer.readLine();
+      System.out.println("FROM SERVER: " + modifiedSentence);
       clientSocket.close();
     }
   }
