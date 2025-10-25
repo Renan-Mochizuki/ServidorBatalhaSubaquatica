@@ -13,6 +13,7 @@ public class Client {
       System.out.print("Enter a sentence: ");
       sentence = inFromUser.readLine();
       outToServer.writeBytes(sentence + "\n");
+      outToServer.flush();
       modifiedSentence = inFromServer.readLine();
       System.out.println("FROM SERVER: " + modifiedSentence);
       clientSocket.close();

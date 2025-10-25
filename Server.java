@@ -1,5 +1,6 @@
 import java.io.*;
 import java.net.*;
+import java.util.*;
 
 // Declarando uma classe Constants para armazenar constantes do jogo
 // (Java não suporta declarações de constantes fora de classes)
@@ -142,10 +143,13 @@ class DispositivoProximidade {
 }
 
 public class Server {
+  // Lista para armazenar os jogadores conectados
+  // Usando um HashMap para facilitar o acesso por nome ou ID
+  // Só permite um jogador por nome
+  // ChatGPT sugeriu esse HashMap
+  static Map<String, Jogador> listaJogadores = new HashMap<>();
 
-  // static Jogador jogador1;
-  // static Dispositivo dispositivo1;
-
+  // Método temporário para imprimir o tabuleiro
   static synchronized void TempImprimir(Jogador jogador1, DispositivoProximidade dispositivo1) {
     for (int i = 0; i < Constants.TAMANHO_TABULEIRO; i++) {
       System.out.print(" " + i);
@@ -166,24 +170,37 @@ public class Server {
     }
   }
 
+  // Declarando thread para lidar com cada cliente conectado
+  // Como lidar com threads visto em:
+  // https://www.geeksforgeeks.org/java/java-multithreading-tutorial
   static class ClientHandler extends Thread {
     private Socket connectionSocket;
 
+    // Salvando o socket de conexão do cliente para podermos utilizar no run()
     public ClientHandler(Socket socket) {
       this.connectionSocket = socket;
     }
 
     public void run() {
       try {
+        // Código tirado dos slides
         BufferedReader inFromClient = new BufferedReader(new InputStreamReader(connectionSocket.getInputStream()));
         DataOutputStream outToClient = new DataOutputStream(connectionSocket.getOutputStream());
         String sentence;
 
         while ((sentence = inFromClient.readLine()) != null) {
-          switch (sentence.toUpperCase()) {
-            case "MOVE":
+          // Separando a sentença nas palavras
+          String splitedSentence[] = sentence.split(" ");
+          // Switch para os comandos enviados pelo cliente
+          switch (splitedSentence[0].toUpperCase()) {
+            // CADASTROJOGADOR <nomeJogador>
+            case "CADASTROJOGADOR": {
+              String nomeJogador = splitedSentence[1];
+              // Jogador novoJogador = new Jogador(nomeJogador);
+              // listaJogadores.putIfAbsent(nomeJogador, novoJogador);
               outToClient.writeBytes(connectionSocket.getRemoteSocketAddress() + "\n");
               break;
+            }
             default:
               outToClient.writeBytes("COMANDO DESCONHECIDO\n");
               break;
@@ -202,6 +219,8 @@ public class Server {
   }
 
   public static void main(String[] args) throws Exception {
+    // Declarando o socket do servidor
+    // Código tirado dos slides
     ServerSocket welcomeSocket = new ServerSocket(Constants.PORTA_SERVIDOR);
     System.out.println("Servidor iniciado na porta " + Constants.PORTA_SERVIDOR);
 
