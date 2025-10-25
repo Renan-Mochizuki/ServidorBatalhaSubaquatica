@@ -13,6 +13,24 @@ class Constants {
   static final int NUMERO_MAX_DISPOSITIVOS_JOGADOR = 4;
 }
 
+class Cliente {
+  private String nome;
+  private String token;
+
+  public Cliente(String nome, String token) {
+    this.nome = nome;
+    this.token = token;
+  }
+
+  public String getNome() {
+    return this.nome;
+  }
+
+  public Boolean validarToken(String token) {
+    return this.token.equals(token);
+  }
+}
+
 // Classe para representar uma posição no tabuleiro
 class Posicao {
   private int x;
@@ -50,21 +68,16 @@ class Posicao {
   }
 }
 
-class Jogador {
-  private String nome;
+class Jogador extends Cliente {
   private Posicao posicao;
   private int numDispositivos;
   private int numMaxDispositivos;
 
-  public Jogador(String nome, int x, int y, int numMaxDispositivos) {
-    this.nome = nome;
+  public Jogador(String nome, String token, int x, int y, int numMaxDispositivos) {
+    super(nome, token);
     this.posicao = new Posicao(x, y);
     this.numDispositivos = 0;
     this.numMaxDispositivos = numMaxDispositivos;
-  }
-
-  public String getNome() {
-    return this.nome;
   }
 
   public Posicao getPosicao() {
@@ -143,11 +156,11 @@ class DispositivoProximidade {
 }
 
 public class Server {
-  // Lista para armazenar os jogadores conectados
+  // Lista para armazenar os clientes conectados
   // Usando um HashMap para facilitar o acesso por nome ou ID
-  // Só permite um jogador por nome
+  // Só permite um cliente por nome
   // ChatGPT sugeriu esse HashMap
-  static Map<String, Jogador> listaJogadores = new HashMap<>();
+  static Map<String, Cliente> listaCliente = new HashMap<>();
 
   // Método temporário para imprimir o tabuleiro
   static synchronized void TempImprimir(Jogador jogador1, DispositivoProximidade dispositivo1) {
@@ -187,23 +200,62 @@ public class Server {
         BufferedReader inFromClient = new BufferedReader(new InputStreamReader(connectionSocket.getInputStream()));
         DataOutputStream outToClient = new DataOutputStream(connectionSocket.getOutputStream());
         String sentence;
+        // Variável para controlar o loop, manter o socket aberto até o cliente pedir
+        // para sair
+        Boolean sair = false;
 
-        while ((sentence = inFromClient.readLine()) != null) {
-          // Separando a sentença nas palavras
-          String splitedSentence[] = sentence.split(" ");
-          // Switch para os comandos enviados pelo cliente
-          switch (splitedSentence[0].toUpperCase()) {
-            // CADASTROJOGADOR <nomeJogador>
-            case "CADASTROJOGADOR": {
-              String nomeJogador = splitedSentence[1];
-              // Jogador novoJogador = new Jogador(nomeJogador);
-              // listaJogadores.putIfAbsent(nomeJogador, novoJogador);
-              outToClient.writeBytes(connectionSocket.getRemoteSocketAddress() + "\n");
-              break;
+        while (!sair) {
+          while ((sentence = inFromClient.readLine()) != null) {
+            // Separando a sentença nas palavras
+            String splitedSentence[] = sentence.split(" ");
+            // Switch para os comandos enviados pelo cliente
+            switch (splitedSentence[0].toUpperCase()) {
+              // CADASTRO <nomeCliente>
+              case "CADASTRO": {
+                // Verifica se foi passado um nome para cliente
+                if (splitedSentence.length < 2 || splitedSentence[1].isEmpty()) {
+                  outToClient.writeBytes("0 Nome invalido\n");
+                  break;
+                }
+
+                String nomeCliente = splitedSentence[1];
+
+                // Criando um token para o cliente, o cliente receberá esse token e deve
+                // utilizá-lo para garantir sua identidade, poderiamos gerar um hash a partir do
+                // nome e um salt mas um randomUUID já garante a unicidade necessária
+                String tokenCliente = UUID.randomUUID().toString();
+                System.out.println("Cadastrando cliente: " + nomeCliente + " com token: " + tokenCliente);
+
+                Cliente novoCliente = new Cliente(nomeCliente, tokenCliente);
+
+                // Tenta adicionar o cliente na lista, esse método retorna o item anterior
+                // daquela chave (nomecliente), ou seja, se não existir item com aquela chave,
+                // retorna null
+                // ChatGPT sugeriu o HashMap do listaCliente e esse método putIfAbsent
+                if (listaCliente.putIfAbsent(nomeCliente, novoCliente) != null) {
+                  outToClient.writeBytes("0 Um cliente com esse nome ja existe\n");
+                } else {
+                  outToClient.writeBytes("1 Cadastrado com sucesso. Token: " + tokenCliente + "\n");
+                }
+                System.out.println("Clientes cadastrados: " + listaCliente.keySet());
+                break;
+              }
+              case "KEEPALIVE": {
+
+              }
+              case "SAIR": {
+                // Remove o cliente da lista
+                if (splitedSentence.length < 2 || splitedSentence[1].isEmpty()) {
+                  outToClient.writeBytes("0 Nome invalido\n");
+                  break;
+                }
+                sair = true;
+                break;
+              }
+              default:
+                outToClient.writeBytes("0 Comando desconhecido\n");
+                break;
             }
-            default:
-              outToClient.writeBytes("COMANDO DESCONHECIDO\n");
-              break;
           }
         }
       } catch (Exception e) {
@@ -228,6 +280,10 @@ public class Server {
       while (true) {
         // Aceite todas as conexões de entrada
         Socket connectionSocket = welcomeSocket.accept();
+
+        System.out.println("Cliente conectado: " + connectionSocket.getInetAddress().getHostAddress() + ":"
+            + connectionSocket.getPort());
+
         // Declarando um ClientHandler (thread) para cada conexão
         ClientHandler clientHandler = new ClientHandler(connectionSocket);
         clientHandler.start();
