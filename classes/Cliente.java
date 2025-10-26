@@ -26,4 +26,9 @@ public class Cliente {
   public void setIdPartida(int idPartida) {
     this.idPartida = idPartida;
   }
+
+  // Esse método vai ser <default> para ser acessado pela classe filha (Jogador)
+  String getToken() {
+    return this.token;
+  }
 }

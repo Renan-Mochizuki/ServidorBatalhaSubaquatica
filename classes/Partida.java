@@ -1,16 +1,16 @@
 package classes;
+
 import java.util.*;
 
 public class Partida {
+  // Esses atributos são default para poderem ser acessados pela classe filha (JogoPartida)
   private int id;
   private List<Cliente> clientes;
-  private List<DispositivoProximidade> dispositivos;
   private Boolean andamento; // true para partida em andamento
 
   public Partida(int id) {
     this.id = id;
     this.clientes = new ArrayList<>();
-    this.dispositivos = new ArrayList<>();
     this.andamento = false;
   }
 
@@ -54,5 +54,10 @@ public class Partida {
 
   public List<Cliente> getClientes() {
     return this.clientes;
+  }
+
+  // Método default para ser acessado pela classe filha (JogoPartida)
+  void setAndamento(Boolean andamento) {
+    this.andamento = andamento;
   }
 }

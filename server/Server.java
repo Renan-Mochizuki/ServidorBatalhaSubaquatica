@@ -4,36 +4,17 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import classes.*;
+import java.util.concurrent.*;
 
 public class Server {
   // Lista para armazenar os clientes conectados
   // Usando um HashMap para facilitar o acesso por nome ou ID
   // Só permite um cliente por nome
   // ChatGPT sugeriu esse HashMap
-  static Map<String, Cliente> listaCliente = new HashMap<>();
+  static Map<String, Cliente> listaCliente = new ConcurrentHashMap<>();
   // Declarando lista de partidas
   static List<Partida> partidas = new ArrayList<>();
-
-  // Método temporário para imprimir o tabuleiro
-  static synchronized void TempImprimir(Jogador jogador1, DispositivoProximidade dispositivo1) {
-    for (int i = 0; i < Constants.TAMANHO_TABULEIRO; i++) {
-      System.out.print(" " + i);
-    }
-    System.out.println("");
-    for (int i = 0; i < Constants.TAMANHO_TABULEIRO; i++) {
-      System.out.print(i + " ");
-      for (int j = 0; j < Constants.TAMANHO_TABULEIRO; j++) {
-        if (j == dispositivo1.getPosicao().getX() && i == dispositivo1.getPosicao().getY()) {
-          System.out.print("X ");
-        } else if (j == jogador1.getPosicao().getX() && i == jogador1.getPosicao().getY()) {
-          System.out.print("J ");
-        } else {
-          System.out.print(". ");
-        }
-      }
-      System.out.println("");
-    }
-  }
+  static List<JogoPartida> jogoPartidas = new ArrayList<>();
 
   // Declarando thread para lidar com cada cliente conectado
   // Como lidar com threads visto em:
@@ -73,18 +54,6 @@ public class Server {
       return true;
     }
 
-    // Método para tentar iniciar a partida, toda vez que um cliente se conecta a
-    // partida ele tentará iniciar a partida, se chama o método iniciarPartida da
-    // Partida que apenas muda o estado de andamento, se conseguir, devemos
-    // instanciar agora jogadores
-    static Boolean tentarIniciarPartida(Partida partida) {
-      if (partida.iniciarPartida()) {
-        System.out.println("Partida " + partida.getId() + " iniciada!");
-        return true;
-      }
-      return false;
-    }
-
     // Método para encontrar uma partida pelo id, percorrendo a lista de partidas e
     // comparando o id
     static Partida encontrarPartida(int idPartida) {
@@ -98,6 +67,23 @@ public class Server {
         }
       }
       return partidaEscolhida;
+    }
+
+    // Método para tentar iniciar a partida, toda vez que um cliente se conecta a
+    // partida ele tentará iniciar a partida, se chama o método iniciarPartida da
+    // Partida que apenas muda o estado de andamento, se conseguir, devemos
+    // instanciar agora jogadores
+    static String tentarIniciarPartida(Partida partida) {
+      if (partida.iniciarPartida()) {
+        // String tokenPartida = UUID.randomUUID().toString();
+        String tokenPartida = "b";
+        JogoPartida novaPartida = new JogoPartida(partida, tokenPartida);
+        jogoPartidas.add(novaPartida);
+        System.out.println("Partida " + partida.getId() + " iniciada, com token: " + tokenPartida);
+
+        return tokenPartida;
+      }
+      return null;
     }
 
     public void run() {
@@ -211,7 +197,7 @@ public class Server {
                 int idPartidaCliente = cliente.getIdPartida();
 
                 // Se o cliente já está na partida escolhida, não faz nada
-                if(idPartidaCliente == idPartida) {
+                if (idPartidaCliente == idPartida) {
                   outToClient.writeBytes("1|Cliente ja esta nessa partida|\n");
                   break;
                 }
