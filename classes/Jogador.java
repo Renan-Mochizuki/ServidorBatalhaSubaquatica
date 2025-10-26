@@ -1,12 +1,14 @@
 package classes;
 
+import java.net.Socket;
+
 public class Jogador extends Cliente {
   private Posicao posicao;
   private int numDispositivos;
   private int numMaxDispositivos;
 
-  public Jogador(String nome, String token, int x, int y, int numMaxDispositivos) {
-    super(nome, token);
+  public Jogador(String nome, String token, Socket connectionSocket, int x, int y, int numMaxDispositivos) {
+    super(nome, token, connectionSocket);
     this.posicao = new Posicao(x, y);
     this.numDispositivos = 0;
     this.numMaxDispositivos = numMaxDispositivos;

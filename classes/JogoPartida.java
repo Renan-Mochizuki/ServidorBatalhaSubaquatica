@@ -3,14 +3,12 @@ package classes;
 import java.util.*;
 
 public class JogoPartida extends Partida {
-  private String tokenPartida;
   private List<DispositivoProximidade> dispositivos;
   private List<Jogador> jogadores;
 
-  public JogoPartida(Partida partida, String tokenPartida) {
-    super(partida.getId());
+  public JogoPartida(int id, List<Cliente> clientes) {
+    super(id);
     setAndamento(true);
-    this.tokenPartida = tokenPartida;
     this.dispositivos = new ArrayList<>();
     this.jogadores = new ArrayList<>();
     // Não iremos copiar clientes diretamente, pois queremos transformá-los em
@@ -20,7 +18,7 @@ public class JogoPartida extends Partida {
     Random random = new Random();
 
     // Vamos percorrer cada cliente e instanciar um novo Jogador a partir dele
-    Iterator<Cliente> iterator = partida.getClientes().iterator();
+    Iterator<Cliente> iterator = clientes.iterator();
     while (iterator.hasNext()) {
       Cliente cl = iterator.next();
       // Variavel para a posição do jogador que vai ser aleatória
@@ -39,10 +37,10 @@ public class JogoPartida extends Partida {
         y1 = random.nextInt(16);
         // Vamos verificar para todos os jogadores já instanciados no jogo para
         // verificar se essas coordenadas geradas estão próximas de qualquer jogador
-        Iterator<Cliente> iterator2 = this.getClientes().iterator();
+        Iterator<Jogador> iterator2 = this.getJogadores().iterator();
         while (iterator2.hasNext()) {
           // Obtendo o jogador e suas coordenadas
-          Jogador jogadorJaInstanciado = (Jogador) iterator2.next();
+          Jogador jogadorJaInstanciado = iterator2.next();
           int xJogador = jogadorJaInstanciado.getPosicao().getX();
           int yJogador = jogadorJaInstanciado.getPosicao().getY();
           // Calcule a distância entre as posições
@@ -66,18 +64,32 @@ public class JogoPartida extends Partida {
           }
         }
       }
-
-      Jogador j = new Jogador(cl.getNome(), cl.getToken(), x1, y1, Constants.NUMERO_MAX_DISPOSITIVOS_JOGADOR);
+      Jogador j = new Jogador(cl.getNome(), cl.getToken(), cl.getConnectionSocket(), x1, y1,
+          Constants.NUMERO_MAX_DISPOSITIVOS_JOGADOR);
       this.jogadores.add(j);
     }
   }
 
-  public Boolean validarToken(String token) {
-    return this.tokenPartida.equals(token);
+  public int getId() {
+    return super.getId();
   }
 
   public List<Jogador> getJogadores() {
     return this.jogadores;
   }
 
+  public Boolean buscarJogadorPorNome(String nome) {
+    Iterator<Jogador> iterator = this.jogadores.iterator();
+    while (iterator.hasNext()) {
+      Jogador j = iterator.next();
+      if (j.getNome().equals(nome)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  public void finalizarPartida() {
+    setAndamento(false);
+  }
 }
