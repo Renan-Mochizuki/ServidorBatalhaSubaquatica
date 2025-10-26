@@ -73,7 +73,7 @@ public class Server {
     // partida ele tentará iniciar a partida, se chama o método iniciarPartida da
     // Partida que apenas muda o estado de andamento, se conseguir, devemos
     // instanciar agora jogadores
-    static String tentarIniciarPartida(Partida partida) {
+    static void tentarIniciarPartida(Partida partida) {
       if (partida.iniciarPartida()) {
         // String tokenPartida = UUID.randomUUID().toString();
         String tokenPartida = "b";
@@ -81,9 +81,13 @@ public class Server {
         jogoPartidas.add(novaPartida);
         System.out.println("Partida " + partida.getId() + " iniciada, com token: " + tokenPartida);
 
-        return tokenPartida;
+        List<Jogador> jogadores = novaPartida.getJogadores();
+        for (Jogador jogador : jogadores) {
+          System.out.println("Jogador " + jogador.getNome() + " posicionado em (" +
+              jogador.getPosicao().getX() + ", " + jogador.getPosicao().getY() + ")");
+        }
+
       }
-      return null;
     }
 
     public void run() {
@@ -205,6 +209,10 @@ public class Server {
                 // Se o cliente já estava em alguma partida
                 if (idPartidaCliente != -1) {
                   Partida partidaAnterior = encontrarPartida(idPartidaCliente);
+                  if (partidaAnterior.getAndamento()) {
+                    outToClient.writeBytes("0|Nao e possivel trocar de partida durante um jogo|\n");
+                    break;
+                  }
                   if (partidaAnterior != null) {
                     // Remove o cliente da partida anterior
                     partidaAnterior.removerCliente(cliente);
@@ -218,9 +226,39 @@ public class Server {
 
                 System.out.println("Cliente " + nomeCliente + " entrou na partida " + idPartida);
 
-                tentarIniciarPartida(partidaEscolhida);
-
                 outToClient.writeBytes("1|Entrou na partida com sucesso|\n");
+
+                // Tenta iniciar a partida
+                tentarIniciarPartida(partidaEscolhida);
+                break;
+              }
+              // SAIRPARTIDA <nome> <token>
+              case "SAIRPARTIDA": {
+                if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
+                    !verificarCampo("token", 2, splitedSentence, outToClient))
+                  break;
+
+                String nomeCliente = splitedSentence[1];
+                String tokenCliente = splitedSentence[2];
+
+                Cliente cliente = listaCliente.get(nomeCliente);
+
+                if (!validarCliente(cliente, tokenCliente, outToClient))
+                  break;
+
+                // TODO: ADICIONAR VERIFICAÇÃO SE A PARTIDA ESTÁ EM ANDAMENTO
+
+                // Pega a partida do cliente
+                Partida partida = encontrarPartida(cliente.getIdPartida());
+
+                if (partida != null) {
+                  partida.removerCliente(cliente);
+                  cliente.setIdPartida(-1);
+                  outToClient.writeBytes("1|Saiu da partida com sucesso|\n");
+                } else {
+                  outToClient.writeBytes("0|Partida inexistente|\n");
+                }
+
                 break;
               }
               // KEEPALIVE <nome> <token>
@@ -256,7 +294,9 @@ public class Server {
             }
           }
         }
-      } catch (Exception e) {
+      } catch (
+
+      Exception e) {
         e.printStackTrace();
       } finally {
         try {
@@ -266,6 +306,7 @@ public class Server {
         }
       }
     }
+
   }
 
   public static void main(String[] args) throws Exception {

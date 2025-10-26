@@ -5,14 +5,18 @@ import java.util.*;
 public class JogoPartida extends Partida {
   private String tokenPartida;
   private List<DispositivoProximidade> dispositivos;
+  private List<Jogador> jogadores;
 
   public JogoPartida(Partida partida, String tokenPartida) {
     super(partida.getId());
     setAndamento(true);
     this.tokenPartida = tokenPartida;
+    this.dispositivos = new ArrayList<>();
+    this.jogadores = new ArrayList<>();
     // Não iremos copiar clientes diretamente, pois queremos transformá-los em
-    // Jogadores, poderiamos criar uma outra lista, mas vamos aproveitar a lista já
-    // existente no atributo clientes
+    // Jogadores, poderiamos criar usar a mesma lista clientes já existente, mas
+    // teriamos que ficar convertendo para Jogador, então para facilitar criamos uma
+    // lista nova de jogadores
     Random random = new Random();
 
     // Vamos percorrer cada cliente e instanciar um novo Jogador a partir dele
@@ -64,9 +68,16 @@ public class JogoPartida extends Partida {
       }
 
       Jogador j = new Jogador(cl.getNome(), cl.getToken(), x1, y1, Constants.NUMERO_MAX_DISPOSITIVOS_JOGADOR);
-      // Aproveitando o método de adicionarCliente para adicionar o Jogador
-      adicionarCliente(j);
+      this.jogadores.add(j);
     }
+  }
+
+  public Boolean validarToken(String token) {
+    return this.tokenPartida.equals(token);
+  }
+
+  public List<Jogador> getJogadores() {
+    return this.jogadores;
   }
 
 }
