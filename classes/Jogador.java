@@ -19,18 +19,24 @@ public class Jogador extends Cliente {
   }
 
   // Método para mover o jogador de acordo com um deslocamento em X e Y
-  public Boolean mover(int deslocamentoX, int deslocamentoY) {
-    if(Math.abs(deslocamentoX) + Math.abs(deslocamentoY) > Constants.DESLOCAMENTO_MAXIMO) {
+  public Boolean mover(int posicaoX, int posicaoY) {
+    // Interpreta posicaoX/posicaoY como coordenadas de destino (absolutas)
+    // Verifica se o destino está dentro do deslocamento máximo a partir da posição
+    // atual
+    if (!this.getPosicao().distanciaPermitida(posicaoX, posicaoY, Constants.DESLOCAMENTO_MAXIMO,
+        Constants.MODO_MOVIMENTO)) {
       return false;
     }
 
-    int novoX = posicao.getX() + deslocamentoX;
-    int novoY = posicao.getY() + deslocamentoY;
-    if (novoX < 0 || novoX >= Constants.TAMANHO_TABULEIRO || novoY < 0 || novoY >= Constants.TAMANHO_TABULEIRO) {
+    // Verifica limites do tabuleiro
+    if (posicaoX < 0 || posicaoX >= Constants.TAMANHO_TABULEIRO || posicaoY < 0
+        || posicaoY >= Constants.TAMANHO_TABULEIRO) {
       return false;
     }
-    this.posicao.setX(novoX);
-    this.posicao.setY(novoY);
+
+    // Atualiza posição para o destino
+    this.posicao.setX(posicaoX);
+    this.posicao.setY(posicaoY);
     return true;
   }
 

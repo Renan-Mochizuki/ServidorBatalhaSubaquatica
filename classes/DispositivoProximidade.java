@@ -28,15 +28,7 @@ public class DispositivoProximidade {
       return false;
     }
 
-    int distanciaX = Math.abs(this.posicao.getX() - jogador.getPosicao().getX());
-    int distanciaY = Math.abs(this.posicao.getY() - jogador.getPosicao().getY());
-
-    // Modo de detecção em formato de quadrado
-    if (Constants.MODO_DETECCAO == 0) {
-      return distanciaX <= alcance && distanciaY <= alcance;
-    }
-    // Modo de detecção em formato de losango
-    int distanciaTotal = distanciaX + distanciaY;
-    return distanciaTotal <= alcance;
+    return this.posicao.distanciaPermitida(jogador.getPosicao().getX(), jogador.getPosicao().getY(), this.alcance,
+        Constants.MODO_DETECCAO);
   }
 }

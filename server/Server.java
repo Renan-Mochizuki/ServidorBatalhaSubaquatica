@@ -118,6 +118,16 @@ public class Server {
       notificarJogadoresPartida(novaPartida, "Turno do jogador", jogadorTurno);
     }
 
+    // Método que passa para o próximo turno da partida e notifica os jogadores
+    static void proximoTurnoPartida(JogoPartida jogoPartida) throws IOException {// Avança para o próximo turno
+      // Avança para o próximo turno
+      jogoPartida.proximoTurno();
+
+      notificarJogadoresPartida(jogoPartida, "Turno do jogador", jogoPartida.getJogadorTurno());
+
+      jogoPartida.imprimirPartida();
+    }
+
     // Método que notifica todos os jogadores de uma partida com uma mensagem e um
     // valor passado
     static void notificarJogadoresPartida(JogoPartida jogoPartida, String mensagem, String valor) throws IOException {
@@ -378,18 +388,18 @@ public class Server {
 
                 break;
               }
-              // MOVER <nome> <token> <deslocamentoX> <deslocamentoY>
+              // MOVER <nome> <token> <posicaoX> <posicaoY>
               case "MOVER": {
                 if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
                     !verificarCampo("token", 2, splitedSentence, outToClient) ||
-                    !verificarCampo("deslocamentoX", 3, splitedSentence, outToClient) ||
-                    !verificarCampo("deslocamentoY", 4, splitedSentence, outToClient))
+                    !verificarCampo("posicaoX", 3, splitedSentence, outToClient) ||
+                    !verificarCampo("posicaoY", 4, splitedSentence, outToClient))
                   break;
 
                 String nomeCliente = splitedSentence[1];
                 String tokenCliente = splitedSentence[2];
-                int deslocamentoX = Integer.parseInt(splitedSentence[3]);
-                int deslocamentoY = Integer.parseInt(splitedSentence[4]);
+                int posicaoX = Integer.parseInt(splitedSentence[3]);
+                int posicaoY = Integer.parseInt(splitedSentence[4]);
 
                 Cliente cliente = listaCliente.get(nomeCliente);
 
@@ -407,19 +417,84 @@ public class Server {
                   break;
                 }
 
-                if (!partidaAndamento.movimento(nomeCliente, deslocamentoX, deslocamentoY)) {
+                if (!partidaAndamento.movimento(nomeCliente, posicaoX, posicaoY)) {
                   outToClient.writeBytes("0|Movimento invalido|\n");
                 } else {
                   outToClient.writeBytes("1|Movimento realizado com sucesso|\n");
 
-                  // Avança para o próximo turno
-                  partidaAndamento.proximoTurno();
+                  proximoTurnoPartida(partidaAndamento);
+                }
+                break;
+              }
+              // ATACAR <nome> <token> <posicaoX> <posicaoY>
+              case "ATACAR": {
+                if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
+                    !verificarCampo("token", 2, splitedSentence, outToClient) ||
+                    !verificarCampo("posicaoX", 3, splitedSentence, outToClient) ||
+                    !verificarCampo("posicaoY", 4, splitedSentence, outToClient))
+                  break;
 
-                  notificarJogadoresPartida(partidaAndamento, "Turno do jogador", partidaAndamento.getJogadorTurno());
+                String nomeCliente = splitedSentence[1];
+                String tokenCliente = splitedSentence[2];
+                int posicaoX = Integer.parseInt(splitedSentence[3]);
+                int posicaoY = Integer.parseInt(splitedSentence[4]);
+
+                Cliente cliente = listaCliente.get(nomeCliente);
+
+                if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+                  break;
+
+                JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
+                if (partidaAndamento == null) {
+                  outToClient.writeBytes("0|Cliente nao esta em uma partida em andamento|\n");
+                  break;
                 }
 
-                partidaAndamento.imprimirPartida();
+                if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
+                  outToClient.writeBytes("0|Nao e o turno do jogador|\n");
+                  break;
+                }
 
+                // Realiza o ataque
+                if (!partidaAndamento.atacar(nomeCliente, posicaoX, posicaoY)) {
+                  outToClient.writeBytes("0|Ataque invalido|\n");
+                } else {
+                  outToClient.writeBytes("1|Ataque realizado com sucesso|\n");
+
+                  // Avança para o próximo turno
+                  proximoTurnoPartida(partidaAndamento);
+                }
+                break;
+              }
+              // PASSAR <nome> <token>
+              case "PASSAR": {
+                if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
+                    !verificarCampo("token", 2, splitedSentence, outToClient))
+                  break;
+
+                String nomeCliente = splitedSentence[1];
+                String tokenCliente = splitedSentence[2];
+
+                Cliente cliente = listaCliente.get(nomeCliente);
+
+                if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+                  break;
+
+                JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
+                if (partidaAndamento == null) {
+                  outToClient.writeBytes("0|Cliente nao esta em uma partida em andamento|\n");
+                  break;
+                }
+
+                if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
+                  outToClient.writeBytes("0|Nao e o turno do jogador|\n");
+                  break;
+                }
+
+                outToClient.writeBytes("1|Turno passado com sucesso|\n");
+
+                // Avança para o próximo turno
+                proximoTurnoPartida(partidaAndamento);
                 break;
               }
               // SAIR <nome> <token>

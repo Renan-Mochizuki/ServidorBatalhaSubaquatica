@@ -5,7 +5,7 @@ import java.util.*;
 public class JogoPartida extends Partida {
   private List<DispositivoProximidade> dispositivos;
   private List<Jogador> jogadores;
-  String jogadorTurno;
+  private String jogadorTurno;
 
   public JogoPartida(int id, List<Cliente> clientes) {
     super(id);
@@ -43,26 +43,13 @@ public class JogoPartida extends Partida {
         while (iterator2.hasNext()) {
           // Obtendo o jogador e suas coordenadas
           Jogador jogadorJaInstanciado = iterator2.next();
-          int xJogador = jogadorJaInstanciado.getPosicao().getX();
-          int yJogador = jogadorJaInstanciado.getPosicao().getY();
-          // Calcule a distância entre as posições
-          int distanciaX = Math.abs(x1 - xJogador);
-          int distanciaY = Math.abs(y1 - yJogador);
-
-          // Modo de detecção em formato de quadrado
-          if (Constants.MODO_DETECCAO == 0) {
-            if (distanciaX <= Constants.PROXIMIDADE_INICIAL_JOGADORES
-                && distanciaY <= Constants.PROXIMIDADE_INICIAL_JOGADORES) {
-              posicaoValida = false;
-              break;
-            }
-          } else {
-            // Modo de detecção em formato de losango
-            int distanciaTotal = distanciaX + distanciaY;
-            if (distanciaTotal <= Constants.PROXIMIDADE_INICIAL_JOGADORES) {
-              posicaoValida = false;
-              break;
-            }
+          // Verifica se a distância entre o jogador gerado e o já instanciado é menor que
+          // a
+          // permitida
+          if (jogadorJaInstanciado.getPosicao().distanciaPermitida(x1, y1, Constants.PROXIMIDADE_INICIAL_JOGADORES,
+              Constants.MODO_MOVIMENTO)) {
+            posicaoValida = false;
+            break;
           }
         }
       }
@@ -122,20 +109,97 @@ public class JogoPartida extends Partida {
     return null;
   }
 
-  public Boolean movimento(String nomeJogador, int deslocamentoX, int deslocamentoY) {
+  public Boolean movimento(String nomeJogador, int posicaoX, int posicaoY) {
     Jogador jogador = buscarJogadorPorNome(nomeJogador);
     if (jogador != null) {
-      return jogador.mover(deslocamentoX, deslocamentoY);
+      return jogador.mover(posicaoX, posicaoY);
     }
     return false;
+  }
+
+  public Boolean atacar(String nomeJogador, int posicaoX, int posicaoY) {
+    Jogador atacante = buscarJogadorPorNome(nomeJogador);
+
+    if (atacante == null || !atacante.getPosicao().distanciaPermitida(posicaoX, posicaoY, Constants.ALCANCE_ATAQUE, Constants.MODO_ATAQUE)) {
+      return false;
+    }
+
+    Iterator<Jogador> iterator = this.jogadores.iterator();
+    while (iterator.hasNext()) {
+      Jogador jogadorAlvo = iterator.next();
+      if(jogadorAlvo == atacante) {
+        continue;
+      }
+
+      if (jogadorAlvo.getPosicao().distanciaPermitida(posicaoX, posicaoY, Constants.ALCANCE_ATAQUE, Constants.MODO_ATAQUE)) {
+        removerJogador(jogadorAlvo);
+        return true;
+      }
+    }
+
+    return true;
+  }
+
+  public void removerJogador(Jogador jogador) {
+    this.jogadores.remove(jogador);
   }
 
   public void finalizarPartida() {
     setAndamento(false);
   }
 
+  // Método gerado pelo Agente Copilot no VSCode
   public void imprimirPartida() {
-    
+    int tamanho = Constants.TAMANHO_TABULEIRO;
+
+    // Inicializa o tabuleiro com '.'
+    String[][] tab = new String[tamanho][tamanho];
+    for (int y = 0; y < tamanho; y++) {
+      for (int x = 0; x < tamanho; x++) {
+        tab[y][x] = ".";
+      }
+    }
+
+    // Marca a posição de cada jogador com seu nome
+    for (int i = 0; i < jogadores.size(); i++) {
+      Jogador j = jogadores.get(i);
+      if (j != null && j.getPosicao() != null) {
+        int x = j.getPosicao().getX();
+        int y = j.getPosicao().getY();
+        if (x >= 0 && x < tamanho && y >= 0 && y < tamanho) {
+          // Se já houver algo naquela posição (dois jogadores no mesmo local), marca com
+          // '*'
+          if (!tab[y][x].equals(".")) {
+            tab[y][x] = "*";
+          } else {
+            if (j.getNome().length() > 1) {
+              tab[y][x] = Integer.toString(i + 1);
+            } else {
+              tab[y][x] = j.getNome();
+            }
+          }
+        }
+      }
+    }
+
+    // Imprime cabeçalho com índices de coluna
+    System.out.println("Partida ID: " + getId());
+    System.out.print("    ");
+    for (int x = 0; x < tamanho; x++) {
+      System.out.print(String.format("%2d ", x));
+    }
+    System.out.println();
+
+    // Imprime cada linha
+    for (int y = 0; y < tamanho; y++) {
+      System.out.print(String.format("%2d ", y));
+      System.out.print(" ");
+      for (int x = 0; x < tamanho; x++) {
+        System.out.print(String.format(" %s ", tab[y][x]));
+      }
+      System.out.println();
+    }
+    System.out.println();
   }
 
 }

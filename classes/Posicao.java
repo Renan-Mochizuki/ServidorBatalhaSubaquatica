@@ -10,7 +10,7 @@ public class Posicao {
     this.y = y;
   }
 
-  public  int getX() {
+  public int getX() {
     return this.x;
   }
 
@@ -35,5 +35,22 @@ public class Posicao {
     }
     this.y = y;
     return true;
+  }
+
+  // Método para calcular se a distância até uma posição destino está dentro do
+  // deslocamento máximo permitido
+  // retorna true se estiver dentro do limite, false caso contrário
+  Boolean distanciaPermitida(int xDestino, int yDestino, int deslocamentoMaximo, int modo) {
+    int distanciaX = Math.abs(this.x - xDestino);
+    int distanciaY = Math.abs(this.y - yDestino);
+
+    // Modo de detecção em formato de quadrado
+    if (modo == 0) {
+      return distanciaX <= deslocamentoMaximo && distanciaY <= deslocamentoMaximo;
+    }
+
+    // Modo de detecção em formato de losango
+    int distanciaTotal = distanciaX + distanciaY;
+    return distanciaTotal <= deslocamentoMaximo;
   }
 }
