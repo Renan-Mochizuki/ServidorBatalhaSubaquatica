@@ -20,6 +20,10 @@ public class Jogador extends Cliente {
 
   // Método para mover o jogador de acordo com um deslocamento em X e Y
   public Boolean mover(int deslocamentoX, int deslocamentoY) {
+    if(Math.abs(deslocamentoX) + Math.abs(deslocamentoY) > Constants.DESLOCAMENTO_MAXIMO) {
+      return false;
+    }
+
     int novoX = posicao.getX() + deslocamentoX;
     int novoY = posicao.getY() + deslocamentoY;
     if (novoX < 0 || novoX >= Constants.TAMANHO_TABULEIRO || novoY < 0 || novoY >= Constants.TAMANHO_TABULEIRO) {

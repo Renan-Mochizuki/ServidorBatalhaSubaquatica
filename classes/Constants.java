@@ -11,4 +11,5 @@ public class Constants {
   public static final int NUMERO_JOGADORES = 2;
   public static final int NUMERO_MAX_DISPOSITIVOS_JOGADOR = 4;
   public static final int PROXIMIDADE_INICIAL_JOGADORES = 5;
+  public static final int DESLOCAMENTO_MAXIMO = 1;
 }
