@@ -1,14 +1,16 @@
 package classes;
 
 public class DispositivoProximidade {
+  private int num;
   private Posicao posicao;
   private int alcance;
   private Jogador jogadorDono;
 
-  public DispositivoProximidade(int x, int y, int alcance, Jogador jogadorDono) {
+  public DispositivoProximidade(int x, int y, int alcance, Jogador jogadorDono, int num) {
     this.posicao = new Posicao(x, y);
     this.alcance = alcance;
     this.jogadorDono = jogadorDono;
+    this.num = num;
   }
 
   public Posicao getPosicao() {
@@ -17,6 +19,14 @@ public class DispositivoProximidade {
 
   public int getAlcance() {
     return this.alcance;
+  }
+
+  public Jogador getJogadorDono() {
+    return this.jogadorDono;
+  }
+
+  public int getNum() {
+    return this.num;
   }
 
   // Método que recebe um jogador e calcula a distância, se
@@ -29,6 +39,6 @@ public class DispositivoProximidade {
     }
 
     return this.posicao.distanciaPermitida(jogador.getPosicao().getX(), jogador.getPosicao().getY(), this.alcance,
-        Constants.MODO_DETECCAO);
+        Constants.MODO_ALCANCE_DISPOSITIVO_PROXIMIDADE);
   }
 }

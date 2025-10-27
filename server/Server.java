@@ -119,7 +119,9 @@ public class Server {
     }
 
     // Método que passa para o próximo turno da partida e notifica os jogadores
-    static void proximoTurnoPartida(JogoPartida jogoPartida) throws IOException {// Avança para o próximo turno
+    static void proximoTurnoPartida(JogoPartida jogoPartida) throws IOException {
+      notificarJogadoresDetectados(jogoPartida);
+
       // Avança para o próximo turno
       jogoPartida.proximoTurno();
 
@@ -135,15 +137,39 @@ public class Server {
       Iterator<Jogador> it = jogoPartida.getJogadores().iterator();
       while (it.hasNext()) {
         Jogador jogador = it.next();
-        DataOutputStream outToClient = new DataOutputStream(jogador.getConnectionSocket().getOutputStream());
-        outToClient.writeBytes("1|" + mensagem + "|" + valor + "\n");
+        notificarJogadorPartida(jogador, mensagem, valor);
       }
     }
 
-    // Método para notificar o cliente desafiado sobre o desafio recebido
-    static void notificarDesafio(Cliente clienteDesafiante, Cliente clienteDesafiado) throws IOException {
-      DataOutputStream outToClient = new DataOutputStream(clienteDesafiado.getConnectionSocket().getOutputStream());
-      outToClient.writeBytes("1|Desafio recebido|" + clienteDesafiante.getNome() + "\n");
+    // Método que notifica um único jogador de uma partida com uma mensagem e um
+    // valor passado
+    static void notificarJogadorPartida(Cliente cliente, String mensagem, String valor) throws IOException {
+      DataOutputStream outToClient = new DataOutputStream(cliente.getConnectionSocket().getOutputStream());
+      outToClient.writeBytes("1|" + mensagem + "|" + valor + "\n");
+    }
+
+    // Método que notifica todos os jogadores sobre os jogadores detectados por seus
+    // dispositivos
+    static void notificarJogadoresDetectados(JogoPartida jogoPartida) throws IOException {
+      // Loop de todos os dispositivos
+      Iterator<DispositivoProximidade> itDispositivos = jogoPartida.getDispositivos().iterator();
+      while (itDispositivos.hasNext()) {
+        String todosJogadoresDetectados = "";
+        DispositivoProximidade dispositivo = itDispositivos.next();
+
+        // Pega a lista de todos jogadores próximos do dispositivo
+        List<Jogador> jogadoresDetectados = jogoPartida.detectarJogadores(dispositivo);
+        Iterator<Jogador> itJogadoresDetectados = jogadoresDetectados.iterator();
+        while (itJogadoresDetectados.hasNext()) {
+          Jogador jogadorDetectado = itJogadoresDetectados.next();
+          // Notifica o jogador dono do dispositivo sobre o jogador detectado
+          todosJogadoresDetectados += jogadorDetectado.getNome() + ",";
+        }
+        if (!todosJogadoresDetectados.isEmpty()) {
+          notificarJogadorPartida(dispositivo.getJogadorDono(),
+              "Jogador detectado pelo dispositivo " + dispositivo.getNum(), todosJogadoresDetectados);
+        }
+      }
     }
 
     static void finalizarPartida(JogoPartida jogoPartida, Jogador vencedor) throws IOException {
@@ -326,7 +352,7 @@ public class Server {
                 // Se o destinatario não desafiou o remetente, então vamos apenas enviar o nosso
                 // desafio para ele
                 if (!nomeDesafiante.equals(clienteDesafiado.getJogadorDesafiado())) {
-                  notificarDesafio(clienteDesafiante, clienteDesafiado);
+                  notificarJogadorPartida(clienteDesafiado, "Desafio recebido", nomeDesafiante);
 
                   clienteDesafiante.setJogadorDesafiado(nomeDesafiado);
 
@@ -460,6 +486,46 @@ public class Server {
                   outToClient.writeBytes("0|Ataque invalido|\n");
                 } else {
                   outToClient.writeBytes("1|Ataque realizado com sucesso|\n");
+
+                  // Avança para o próximo turno
+                  proximoTurnoPartida(partidaAndamento);
+                }
+                break;
+              }
+              // SONAR <nome> <token> <posicaoX> <posicaoY>
+              case "SONAR": {
+                if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
+                    !verificarCampo("token", 2, splitedSentence, outToClient) ||
+                    !verificarCampo("posicaoX", 3, splitedSentence, outToClient) ||
+                    !verificarCampo("posicaoY", 4, splitedSentence, outToClient))
+                  break;
+
+                String nomeCliente = splitedSentence[1];
+                String tokenCliente = splitedSentence[2];
+                int posicaoX = Integer.parseInt(splitedSentence[3]);
+                int posicaoY = Integer.parseInt(splitedSentence[4]);
+
+                Cliente cliente = listaCliente.get(nomeCliente);
+
+                if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+                  break;
+
+                JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
+                if (partidaAndamento == null) {
+                  outToClient.writeBytes("0|Cliente nao esta em uma partida em andamento|\n");
+                  break;
+                }
+
+                if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
+                  outToClient.writeBytes("0|Nao e o turno do jogador|\n");
+                  break;
+                }
+
+                // Realiza a ação do dispositivo de proximidade
+                if (!partidaAndamento.dispositivoProximidade(nomeCliente, posicaoX, posicaoY)) {
+                  outToClient.writeBytes("0|Sonar invalido|\n");
+                } else {
+                  outToClient.writeBytes("1|Sonar utilizado com sucesso|\n");
 
                   // Avança para o próximo turno
                   proximoTurnoPartida(partidaAndamento);

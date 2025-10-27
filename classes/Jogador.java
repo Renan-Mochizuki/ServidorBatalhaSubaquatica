@@ -18,13 +18,26 @@ public class Jogador extends Cliente {
     return this.posicao;
   }
 
+  public int getNumDispositivos() {
+    return this.numDispositivos;
+  }
+
+  public int getNumMaxDispositivos() {
+    return this.numMaxDispositivos;
+  }
+
   // Método para mover o jogador de acordo com um deslocamento em X e Y
   public Boolean mover(int posicaoX, int posicaoY) {
     // Interpreta posicaoX/posicaoY como coordenadas de destino (absolutas)
     // Verifica se o destino está dentro do deslocamento máximo a partir da posição
     // atual
-    if (!this.getPosicao().distanciaPermitida(posicaoX, posicaoY, Constants.DESLOCAMENTO_MAXIMO,
-        Constants.MODO_MOVIMENTO)) {
+    if (!this.getPosicao().distanciaPermitida(posicaoX, posicaoY, Constants.DISTANCIA_MOVIMENTO,
+        Constants.MODO_DISTANCIA_MOVIMENTO)) {
+      return false;
+    }
+
+    // Se a posição atual for igual à posição destino, não move
+    if(this.getPosicao().getX() == posicaoX && this.getPosicao().getY() == posicaoY){
       return false;
     }
 

@@ -3,8 +3,8 @@ package classes;
 import java.util.*;
 
 public class JogoPartida extends Partida {
-  private List<DispositivoProximidade> dispositivos;
   private List<Jogador> jogadores;
+  private List<DispositivoProximidade> dispositivos;
   private String jogadorTurno;
 
   public JogoPartida(int id, List<Cliente> clientes) {
@@ -47,7 +47,7 @@ public class JogoPartida extends Partida {
           // a
           // permitida
           if (jogadorJaInstanciado.getPosicao().distanciaPermitida(x1, y1, Constants.PROXIMIDADE_INICIAL_JOGADORES,
-              Constants.MODO_MOVIMENTO)) {
+              Constants.MODO_DISTANCIA_MOVIMENTO)) {
             posicaoValida = false;
             break;
           }
@@ -65,6 +65,10 @@ public class JogoPartida extends Partida {
 
   public List<Jogador> getJogadores() {
     return this.jogadores;
+  }
+
+  public List<DispositivoProximidade> getDispositivos() {
+    return this.dispositivos;
   }
 
   public Jogador buscarJogadorPorNome(String nome) {
@@ -120,24 +124,69 @@ public class JogoPartida extends Partida {
   public Boolean atacar(String nomeJogador, int posicaoX, int posicaoY) {
     Jogador atacante = buscarJogadorPorNome(nomeJogador);
 
-    if (atacante == null || !atacante.getPosicao().distanciaPermitida(posicaoX, posicaoY, Constants.ALCANCE_ATAQUE, Constants.MODO_ATAQUE)) {
+    if (atacante == null || !atacante.getPosicao().distanciaPermitida(posicaoX, posicaoY, Constants.DISTANCIA_ATAQUE,
+        Constants.MODO_DISTANCIA_ATAQUE)) {
       return false;
     }
 
     Iterator<Jogador> iterator = this.jogadores.iterator();
     while (iterator.hasNext()) {
       Jogador jogadorAlvo = iterator.next();
-      if(jogadorAlvo == atacante) {
+      if (jogadorAlvo == atacante) {
         continue;
       }
 
-      if (jogadorAlvo.getPosicao().distanciaPermitida(posicaoX, posicaoY, Constants.ALCANCE_ATAQUE, Constants.MODO_ATAQUE)) {
+      if (jogadorAlvo.getPosicao().distanciaPermitida(posicaoX, posicaoY, Constants.ALCANCE_ATAQUE,
+          Constants.MODO_ALCANCE_ATAQUE)) {
         removerJogador(jogadorAlvo);
         return true;
       }
     }
 
     return true;
+  }
+
+  public Boolean dispositivoProximidade(String nomeJogador, int posicaoX, int posicaoY) {
+    Jogador jogador = buscarJogadorPorNome(nomeJogador);
+    if (jogador == null) {
+      return false;
+    }
+
+    if (!jogador.getPosicao().distanciaPermitida(posicaoX, posicaoY, Constants.DISTANCIA_DISPOSITIVO_PROXIMIDADE,
+        Constants.MODO_DISTANCIA_DISPOSITIVO_PROXIMIDADE)) {
+      return false;
+    }
+
+    if (!jogador.adicionarDispositivo()) {
+      return false;
+    }
+
+    DispositivoProximidade dispositivo = new DispositivoProximidade(posicaoX, posicaoY,
+        Constants.ALCANCE_DISPOSITIVO_PROXIMIDADE, jogador, jogador.getNumDispositivos());
+    this.dispositivos.add(dispositivo);
+    return true;
+  }
+
+  public void removerDispositivoProximidade(DispositivoProximidade dispositivo) {
+    Jogador jogadorDono = dispositivo.getJogadorDono();
+    if (jogadorDono != null) {
+      jogadorDono.removerDispositivo();
+    }
+    this.dispositivos.remove(dispositivo);
+  }
+
+  // Método que itera sobre todos os jogadores e verifica se estão dentro do
+  // alcance do dispositivo e retorna como lista
+  public List<Jogador> detectarJogadores(DispositivoProximidade dispositivo) {
+    List<Jogador> jogadoresDetectados = new ArrayList<>();
+    Iterator<Jogador> iteratorJogadores = this.jogadores.iterator();
+    while (iteratorJogadores.hasNext()) {
+      Jogador jogador = iteratorJogadores.next();
+      if (dispositivo.detectarJogador(jogador)) {
+        jogadoresDetectados.add(jogador);
+      }
+    }
+    return jogadoresDetectados;
   }
 
   public void removerJogador(Jogador jogador) {
@@ -177,6 +226,28 @@ public class JogoPartida extends Partida {
             } else {
               tab[y][x] = j.getNome();
             }
+          }
+        }
+      }
+    }
+
+    // Marca a posição de cada dispositivo com a primeira letra do nome do dono em
+    // caixa baixa
+    for (int i = 0; i < dispositivos.size(); i++) {
+      DispositivoProximidade d = dispositivos.get(i);
+      if (d != null && d.getPosicao() != null) {
+        int dx = d.getPosicao().getX();
+        int dy = d.getPosicao().getY();
+        if (dx >= 0 && dx < tamanho && dy >= 0 && dy < tamanho) {
+          // Se já houver um jogador ou marcador especial naquele local, não
+          // sobrescreve - jogadores tem prioridade visual
+          if (tab[dy][dx].equals(".")) {
+            Jogador dono = d.getJogadorDono() != null ? d.getJogadorDono() : null;
+            String mark = "?";
+            if (d.getPosicao() != null && dono != null && dono.getNome() != null && dono.getNome().length() > 0) {
+              mark = dono.getNome().substring(0, 1).toLowerCase();
+            }
+            tab[dy][dx] = mark;
           }
         }
       }
