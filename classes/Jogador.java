@@ -6,12 +6,14 @@ public class Jogador extends Cliente {
   private Posicao posicao;
   private int numDispositivos;
   private int numMaxDispositivos;
+  private int numMisseis;
 
   public Jogador(String nome, String token, Socket connectionSocket, int x, int y, int numMaxDispositivos) {
     super(nome, token, connectionSocket);
     this.posicao = new Posicao(x, y);
     this.numDispositivos = 0;
     this.numMaxDispositivos = numMaxDispositivos;
+    this.numMisseis = 0;
   }
 
   public Posicao getPosicao() {
@@ -24,6 +26,10 @@ public class Jogador extends Cliente {
 
   public int getNumMaxDispositivos() {
     return this.numMaxDispositivos;
+  }
+
+  public int getNumMisseis() {
+    return this.numMisseis;
   }
 
   // Método para mover o jogador de acordo com um deslocamento em X e Y
@@ -66,6 +72,20 @@ public class Jogador extends Cliente {
   public Boolean removerDispositivo() {
     if (this.numDispositivos > 0) {
       this.numDispositivos--;
+      return true;
+    }
+    return false;
+  }
+
+  // Método para adicionar míssil
+  public void adicionarMissil() {
+    this.numMisseis++;
+  }
+
+  // Método para remover míssil
+  public Boolean removerMissil() {
+    if (this.numMisseis > 0) {
+      this.numMisseis--;
       return true;
     }
     return false;

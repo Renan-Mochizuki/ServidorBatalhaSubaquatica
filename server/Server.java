@@ -98,7 +98,7 @@ public class Server {
     // instanciar agora o JogoPartida que instancia os jogadores e inicia o jogo
     static void tentarIniciarPartida(Partida partida) throws IOException {
       if (partida.iniciarPartida()) {
-        JogoPartida novaPartida = new JogoPartida(partida.getId(), partida.getClientes());
+        JogoPartida novaPartida = new JogoPartida(partida.getId(), partida.getClientes(), partida);
         iniciarJogoPartida(novaPartida);
       }
     }
@@ -114,12 +114,18 @@ public class Server {
       notificarJogadoresPartida(novaPartida, "Partida iniciada", novaPartida.getId() + "");
 
       String jogadorTurno = novaPartida.proximoTurno();
-      System.out.println("Primeiro turno do jogador: " + jogadorTurno);
       notificarJogadoresPartida(novaPartida, "Turno do jogador", jogadorTurno);
     }
 
-    // Método que passa para o próximo turno da partida e notifica os jogadores
+    // Método que passa para o próximo turno da partida e determina os
+    // acontecimentos da partida para notificar os jogadores
     static void proximoTurnoPartida(JogoPartida jogoPartida) throws IOException {
+      lidarJogadoresAtaques(jogoPartida);
+
+      if (verificarFimJogoPartida(jogoPartida)) {
+        return;
+      }
+
       notificarJogadoresDetectados(jogoPartida);
 
       // Avança para o próximo turno
@@ -148,8 +154,8 @@ public class Server {
       outToClient.writeBytes("1|" + mensagem + "|" + valor + "\n");
     }
 
-    // Método que notifica todos os jogadores sobre os jogadores detectados por seus
-    // dispositivos
+    // Método que notifica o dono do dispositivo sobre os jogadores detectados por
+    // seus dispositivos de proximidade
     static void notificarJogadoresDetectados(JogoPartida jogoPartida) throws IOException {
       // Loop de todos os dispositivos
       Iterator<DispositivoProximidade> itDispositivos = jogoPartida.getDispositivos().iterator();
@@ -172,9 +178,54 @@ public class Server {
       }
     }
 
-    static void finalizarPartida(JogoPartida jogoPartida, Jogador vencedor) throws IOException {
-      // TODO
-      notificarJogadoresPartida(jogoPartida, "Partida finalizada", vencedor.getNome());
+    // Método que notifica o dono do dispositivo sobre os jogadores acertados por
+    // seus misseis
+    static void lidarJogadoresAtaques(JogoPartida jogoPartida) throws IOException {
+      // Loop de todos os misseis
+      Iterator<Missil> itMisseis = jogoPartida.getMisseis().iterator();
+      while (itMisseis.hasNext()) {
+        String todosJogadoresAcertados = "";
+        Missil missil = itMisseis.next();
+
+        // Pega a lista de todos jogadores próximos do missil
+        List<Jogador> jogadoresDetectados = jogoPartida.detectarJogadores(missil);
+        Iterator<Jogador> itJogadoresDetectados = jogadoresDetectados.iterator();
+        while (itJogadoresDetectados.hasNext()) {
+          Jogador jogadorDetectado = itJogadoresDetectados.next();
+          // Notifica o jogador dono do missil sobre o jogador detectado
+          todosJogadoresAcertados += jogadorDetectado.getNome() + ",";
+        }
+        if (!todosJogadoresAcertados.isEmpty()) {
+          notificarJogadorPartida(missil.getJogadorDono(),
+              "Jogador acertados pelo missil", todosJogadoresAcertados);
+          // Iterando sobre os jogadores acertados para matá-los
+          Iterator<Jogador> itJogadoresAcertados = jogadoresDetectados.iterator();
+          while (itJogadoresAcertados.hasNext()) {
+            Jogador jogadorAcertado = itJogadoresAcertados.next();
+            jogoPartida.matarJogador(jogadorAcertado);
+            notificarJogadorPartida(jogadorAcertado,
+                "Você foi acertado por um missil", missil.getJogadorDono().getNome());
+          }
+        }
+      }
+    }
+
+    static Boolean verificarFimJogoPartida(JogoPartida jogoPartida) throws IOException {
+      Jogador vencedor = jogoPartida.verificarFimPartida();
+      if (vencedor != null) {
+        notificarJogadorPartida(vencedor, "Você é o vencedor!", null);
+        notificarJogadoresPartida(jogoPartida, "Partida finalizada", vencedor.getNome());
+        finalizarJogoPartida(jogoPartida);
+        return true;
+      }
+      return false;
+    }
+
+    static void finalizarJogoPartida(JogoPartida jogoPartida) {
+      System.out.println("Partida finalizada: " + jogoPartida.getId());
+      // TODO: MANTER JOGADORES MORTOS NA LISTA DE JOGADORES
+      jogoPartida.finalizarPartida();
+      jogoPartidas.remove(jogoPartida);
     }
 
     public void run() {
@@ -373,7 +424,7 @@ public class Server {
                 clienteDesafiante.setIdPartida(idPartida);
                 clienteDesafiado.setIdPartida(idPartida);
 
-                JogoPartida novaPartida = new JogoPartida(idPartida, clientes);
+                JogoPartida novaPartida = new JogoPartida(idPartida, clientes, null);
 
                 iniciarJogoPartida(novaPartida);
                 break;
@@ -395,7 +446,7 @@ public class Server {
                 // TODO
                 JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
                 if (partidaAndamento != null) {
-                  // partidaAndamento.removerJogador(cliente);
+                  partidaAndamento.removerJogador(partidaAndamento.buscarJogadorPorNome(nomeCliente));
                   cliente.setIdPartida(-1);
                   outToClient.writeBytes("1|Saiu da partida|\n");
                   break;
@@ -482,7 +533,7 @@ public class Server {
                 }
 
                 // Realiza o ataque
-                if (!partidaAndamento.atacar(nomeCliente, posicaoX, posicaoY)) {
+                if (!partidaAndamento.ataque(nomeCliente, posicaoX, posicaoY)) {
                   outToClient.writeBytes("0|Ataque invalido|\n");
                 } else {
                   outToClient.writeBytes("1|Ataque realizado com sucesso|\n");

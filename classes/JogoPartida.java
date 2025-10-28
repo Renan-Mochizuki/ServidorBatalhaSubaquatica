@@ -2,22 +2,25 @@ package classes;
 
 import java.util.*;
 
-public class JogoPartida extends Partida {
+public class JogoPartida {
+  private int id;
+  private Partida partidaBase;
   private List<Jogador> jogadores;
   private List<DispositivoProximidade> dispositivos;
+  private List<Missil> misseis;
   private String jogadorTurno;
+  private int numTurno;
 
-  public JogoPartida(int id, List<Cliente> clientes) {
-    super(id);
-    setAndamento(true);
+  public JogoPartida(int id, List<Cliente> clientes, Partida partidaBase) {
+    this.id = id;
+    this.partidaBase = partidaBase;
     this.dispositivos = new ArrayList<>();
     this.jogadores = new ArrayList<>();
+    this.misseis = new ArrayList<>();
     this.jogadorTurno = null;
-    // Não iremos copiar clientes diretamente, pois queremos transformá-los em
-    // Jogadores, poderiamos criar usar a mesma lista clientes já existente, mas
-    // teriamos que ficar convertendo para Jogador, então para facilitar criamos uma
-    // lista nova de jogadores
+    this.numTurno = 0;
     Random random = new Random();
+    // Vamos transformar os clientes em Jogadores
 
     // Vamos percorrer cada cliente e instanciar um novo Jogador a partir dele
     Iterator<Cliente> iterator = clientes.iterator();
@@ -44,8 +47,7 @@ public class JogoPartida extends Partida {
           // Obtendo o jogador e suas coordenadas
           Jogador jogadorJaInstanciado = iterator2.next();
           // Verifica se a distância entre o jogador gerado e o já instanciado é menor que
-          // a
-          // permitida
+          // a permitida
           if (jogadorJaInstanciado.getPosicao().distanciaPermitida(x1, y1, Constants.PROXIMIDADE_INICIAL_JOGADORES,
               Constants.MODO_DISTANCIA_MOVIMENTO)) {
             posicaoValida = false;
@@ -60,7 +62,7 @@ public class JogoPartida extends Partida {
   }
 
   public int getId() {
-    return super.getId();
+    return this.id;
   }
 
   public List<Jogador> getJogadores() {
@@ -69,6 +71,19 @@ public class JogoPartida extends Partida {
 
   public List<DispositivoProximidade> getDispositivos() {
     return this.dispositivos;
+  }
+
+  public List<Missil> getMisseis() {
+    return this.misseis;
+  }
+
+  public String getJogadorTurno() {
+    return jogadorTurno;
+  }
+
+  public void setJogadorTurno(String jogadorTurno) {
+    this.jogadorTurno = jogadorTurno;
+    this.numTurno++;
   }
 
   public Jogador buscarJogadorPorNome(String nome) {
@@ -82,14 +97,9 @@ public class JogoPartida extends Partida {
     return null;
   }
 
-  public String getJogadorTurno() {
-    return jogadorTurno;
-  }
-
-  public void setJogadorTurno(String jogadorTurno) {
-    this.jogadorTurno = jogadorTurno;
-  }
-
+  // Método para avançar o turno para o próximo jogador, se não houver jogador, o
+  // primiero turno será do primeiro jogador da lista, usualmente, a pessoa que
+  // foi desafiada
   public String proximoTurno() {
     if (jogadores.isEmpty())
       return null;
@@ -97,6 +107,7 @@ public class JogoPartida extends Partida {
     // Verifica se não há turno definido ainda
     if (jogadorTurno == null) {
       jogadorTurno = jogadores.get(0).getNome();
+      this.numTurno++;
       return jogadorTurno;
     }
 
@@ -107,6 +118,7 @@ public class JogoPartida extends Partida {
         // Garantir que volta ao início da lista se estiver no último jogador
         int proximoIndice = (i + 1) % jogadores.size();
         jogadorTurno = jogadores.get(proximoIndice).getNome();
+        this.numTurno++;
         return jogadorTurno;
       }
     }
@@ -121,13 +133,19 @@ public class JogoPartida extends Partida {
     return false;
   }
 
-  public Boolean atacar(String nomeJogador, int posicaoX, int posicaoY) {
+  public Boolean ataque(String nomeJogador, int posicaoX, int posicaoY) {
     Jogador atacante = buscarJogadorPorNome(nomeJogador);
 
     if (atacante == null || !atacante.getPosicao().distanciaPermitida(posicaoX, posicaoY, Constants.DISTANCIA_ATAQUE,
         Constants.MODO_DISTANCIA_ATAQUE)) {
       return false;
     }
+
+    atacante.adicionarMissil();
+
+    // Adicionando missil ao histórico de mísseis da partida
+    Missil novoMissil = new Missil(posicaoX, posicaoY, Constants.ALCANCE_ATAQUE, atacante, numTurno);
+    this.misseis.add(novoMissil);
 
     Iterator<Jogador> iterator = this.jogadores.iterator();
     while (iterator.hasNext()) {
@@ -138,12 +156,17 @@ public class JogoPartida extends Partida {
 
       if (jogadorAlvo.getPosicao().distanciaPermitida(posicaoX, posicaoY, Constants.ALCANCE_ATAQUE,
           Constants.MODO_ALCANCE_ATAQUE)) {
-        removerJogador(jogadorAlvo);
+        matarJogador(jogadorAlvo);
         return true;
       }
     }
 
     return true;
+  }
+
+  // Método para quando um jogador morrer
+  public void matarJogador(Jogador jogador) {
+    removerJogador(jogador);
   }
 
   public Boolean dispositivoProximidade(String nomeJogador, int posicaoX, int posicaoY) {
@@ -177,27 +200,43 @@ public class JogoPartida extends Partida {
 
   // Método que itera sobre todos os jogadores e verifica se estão dentro do
   // alcance do dispositivo e retorna como lista
-  public List<Jogador> detectarJogadores(DispositivoProximidade dispositivo) {
+  public List<Jogador> detectarJogadores(IDetector detector) {
     List<Jogador> jogadoresDetectados = new ArrayList<>();
     Iterator<Jogador> iteratorJogadores = this.jogadores.iterator();
     while (iteratorJogadores.hasNext()) {
       Jogador jogador = iteratorJogadores.next();
-      if (dispositivo.detectarJogador(jogador)) {
+      if (detector.detectarJogador(jogador)) {
         jogadoresDetectados.add(jogador);
       }
     }
     return jogadoresDetectados;
   }
 
+  // Método para remover um jogador da partida
   public void removerJogador(Jogador jogador) {
     this.jogadores.remove(jogador);
   }
 
-  public void finalizarPartida() {
-    setAndamento(false);
+  // Método que verifica se há apenas um jogador restante na partida, se sim, a
+  // partida termina e retorna o jogador vencedor
+  public Jogador verificarFimPartida() {
+    if (this.jogadores.size() == 1) {
+      return this.jogadores.get(0);
+    }
+    return null;
   }
 
-  // Método gerado pelo Agente Copilot no VSCode
+  // Método para finalizar a partida, limpando os clientes e marcando a partida como
+  // não em andamento caso a partida base não seja nula
+  public void finalizarPartida() {
+    if (partidaBase != null) {
+      partidaBase.setAndamento(false);
+      partidaBase.limparClientes();
+    }
+  }
+
+  // Método gerado pelo Agente Copilot no VSCode ao pedir para fazer um método que
+  // imprima o tabuleiro da partida
   public void imprimirPartida() {
     int tamanho = Constants.TAMANHO_TABULEIRO;
 
@@ -254,7 +293,7 @@ public class JogoPartida extends Partida {
     }
 
     // Imprime cabeçalho com índices de coluna
-    System.out.println("Partida ID: " + getId());
+    System.out.println("Partida ID: " + this.id);
     System.out.print("    ");
     for (int x = 0; x < tamanho; x++) {
       System.out.print(String.format("%2d ", x));

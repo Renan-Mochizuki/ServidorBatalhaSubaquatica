@@ -1,15 +1,15 @@
 package classes;
 
-public class DispositivoProximidade {
-  private int num;
+public class DispositivoProximidade implements IDetector {
+  private int num; // Identificador discriminante do dispositivo de um jogador (1 a numMaxDispositivos)
   private Posicao posicao;
   private int alcance;
   private Jogador jogadorDono;
 
   public DispositivoProximidade(int x, int y, int alcance, Jogador jogadorDono, int num) {
     this.posicao = new Posicao(x, y);
-    this.alcance = alcance;
     this.jogadorDono = jogadorDono;
+    this.alcance = alcance;
     this.num = num;
   }
 
