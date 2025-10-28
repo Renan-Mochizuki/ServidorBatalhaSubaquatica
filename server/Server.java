@@ -4,29 +4,24 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import classes.*;
-import java.util.concurrent.*;
 
 public class Server {
-  // Lista para armazenar os clientes conectados
-  // Usando um HashMap para facilitar o acesso por nome ou ID
-  // Só permite um cliente por nome
-  // ChatGPT sugeriu esse HashMap
-  static Map<String, Cliente> listaCliente = new ConcurrentHashMap<>();
-  // Declarando lista de partidas
-  static List<Partida> partidas = new ArrayList<>();
-  static List<JogoPartida> jogoPartidas = new ArrayList<>();
 
-  static int idAutoIncrement = Constants.NUMERO_PARTIDAS + 1;
+  // Até então havia feito toda a lógica dentro do ClientHandler sem se preocupar
+  // com condições de corrida essa classe tem o intuito de lidar com isso
+  static GameManager gameManager = new GameManager();
 
   // Declarando thread para lidar com cada cliente conectado
   // Como lidar com threads visto em:
   // https://www.geeksforgeeks.org/java/java-multithreading-tutorial
   static class ClientHandler extends Thread {
     private Socket connectionSocket;
+    private GameManager gameManager;
 
     // Salvando o socket de conexão do cliente para podermos utilizar no run()
-    public ClientHandler(Socket socket) {
+    public ClientHandler(Socket socket, GameManager gameManager) {
       this.connectionSocket = socket;
+      this.gameManager = gameManager;
     }
 
     // Método que recebe um indice para verificar se foi informado algo para o campo
@@ -45,8 +40,7 @@ public class Server {
     // Método para validar se o cliente existe e se o token está correto, se estiver
     // correto, ele vai setar o socket de conexão do cliente novamente
     static Boolean validarCliente(Cliente cliente, String tokenCliente, DataOutputStream outToClient,
-        Socket connectionSocket)
-        throws IOException {
+        Socket connectionSocket) throws IOException {
       if (cliente == null) {
         outToClient.writeBytes("0|Cliente nao encontrado|\n");
         return false;
@@ -62,184 +56,6 @@ public class Server {
       return true;
     }
 
-    // Método para encontrar uma partida pelo id, percorrendo a lista de partidas e
-    // comparando o id
-    static Partida encontrarPartida(int idPartida) {
-      Partida partidaEscolhida = null;
-      Iterator<Partida> it = partidas.iterator();
-      while (it.hasNext()) {
-        Partida partida = it.next();
-        if (partida.getId() == idPartida) {
-          partidaEscolhida = partida;
-          break;
-        }
-      }
-      return partidaEscolhida;
-    }
-
-    // Método para encontrar uma partida pelo id, percorrendo a lista de partidas e
-    // comparando o id
-    static JogoPartida encontrarPartidaAndamento(int idPartida) {
-      JogoPartida partidaEscolhida = null;
-      Iterator<JogoPartida> it = jogoPartidas.iterator();
-      while (it.hasNext()) {
-        JogoPartida jogoPartida = it.next();
-        if (jogoPartida.getId() == idPartida) {
-          partidaEscolhida = jogoPartida;
-          break;
-        }
-      }
-      return partidaEscolhida;
-    }
-
-    // Método para tentar iniciar a partida, toda vez que um cliente se conecta a
-    // partida ele tentará iniciar a partida, se chama o método iniciarPartida da
-    // Partida que apenas muda o estado de andamento, se conseguir, devemos
-    // instanciar agora o JogoPartida que instancia os jogadores e inicia o jogo
-    static void tentarIniciarPartida(Partida partida) throws IOException {
-      if (partida.iniciarPartida()) {
-        JogoPartida novaPartida = new JogoPartida(partida.getId(), partida.getClientes(), partida);
-        iniciarJogoPartida(novaPartida);
-      }
-    }
-
-    // Método para iniciar o jogo da partida, adicionando na lista de partidas e
-    // notificando os jogadores sobre o inicio da partida e o turno
-    static void iniciarJogoPartida(JogoPartida novaPartida) throws IOException {
-      jogoPartidas.add(novaPartida);
-      System.out.println("Partida iniciada: " + novaPartida.getId());
-
-      novaPartida.imprimirPartida();
-      // Devemos notificar os clientes dessa partida que a partida iniciou
-      notificarJogadoresPartida(novaPartida, "Partida iniciada", novaPartida.getId() + "");
-
-      String jogadorTurno = novaPartida.proximoTurno();
-      notificarJogadoresPartida(novaPartida, "Turno do jogador", jogadorTurno);
-    }
-
-    // Método que passa para o próximo turno da partida e determina os
-    // acontecimentos da partida para notificar os jogadores
-    static void proximoTurnoPartida(JogoPartida jogoPartida) throws IOException {
-      lidarJogadoresAtaques(jogoPartida);
-
-      if (verificarFimJogoPartida(jogoPartida)) {
-        return;
-      }
-
-      notificarJogadoresDetectados(jogoPartida);
-
-      // Avança para o próximo turno
-      jogoPartida.proximoTurno();
-
-      notificarJogadoresPartida(jogoPartida, "Turno do jogador", jogoPartida.getJogadorTurno());
-
-      jogoPartida.imprimirPartida();
-    }
-
-    // Método que notifica todos os jogadores de uma partida com uma mensagem e um
-    // valor passado
-    static void notificarJogadoresPartida(JogoPartida jogoPartida, String mensagem, String valor) throws IOException {
-      // Percorre todos os clientes da partida e envia a mensagem
-      Iterator<Jogador> it = jogoPartida.getTodosJogadores().iterator();
-      while (it.hasNext()) {
-        Jogador jogador = it.next();
-        notificarJogadorPartida(jogador, mensagem, valor);
-      }
-    }
-
-    // Método que notifica um único jogador de uma partida com uma mensagem e um
-    // valor passado
-    static void notificarJogadorPartida(Cliente cliente, String mensagem, String valor) throws IOException {
-      DataOutputStream outToClient = new DataOutputStream(cliente.getConnectionSocket().getOutputStream());
-      outToClient.writeBytes("1|" + mensagem + "|" + valor + "\n");
-    }
-
-    // Método que notifica o dono do dispositivo sobre os jogadores detectados por
-    // seus dispositivos de proximidade
-    static void notificarJogadoresDetectados(JogoPartida jogoPartida) throws IOException {
-      // Loop de todos os dispositivos
-      Iterator<DispositivoProximidade> itDispositivos = jogoPartida.getDispositivos().iterator();
-      while (itDispositivos.hasNext()) {
-        String todosJogadoresDetectados = "";
-        DispositivoProximidade dispositivo = itDispositivos.next();
-
-        // Pega a lista de todos jogadores próximos do dispositivo
-        List<Jogador> jogadoresDetectados = jogoPartida.detectarJogadores(dispositivo);
-        Iterator<Jogador> itJogadoresDetectados = jogadoresDetectados.iterator();
-        while (itJogadoresDetectados.hasNext()) {
-          Jogador jogadorDetectado = itJogadoresDetectados.next();
-          // Notifica o jogador dono do dispositivo sobre o jogador detectado
-          todosJogadoresDetectados += jogadorDetectado.getNome() + ",";
-        }
-        if (!todosJogadoresDetectados.isEmpty()) {
-          notificarJogadorPartida(dispositivo.getJogadorDono(),
-              "Jogador detectado pelo dispositivo " + dispositivo.getNum(), todosJogadoresDetectados);
-        }
-      }
-    }
-
-    // Método que notifica o dono do dispositivo sobre os jogadores acertados por
-    // seus misseis
-    static void lidarJogadoresAtaques(JogoPartida jogoPartida) throws IOException {
-      // Loop de todos os misseis
-      Iterator<Missil> itMisseis = jogoPartida.getMisseis().iterator();
-      while (itMisseis.hasNext()) {
-        String todosJogadoresAcertados = "";
-        Missil missil = itMisseis.next();
-
-        // Pega a lista de todos jogadores próximos do missil
-        List<Jogador> jogadoresDetectados = jogoPartida.detectarJogadores(missil);
-        Iterator<Jogador> itJogadoresDetectados = jogadoresDetectados.iterator();
-        while (itJogadoresDetectados.hasNext()) {
-          Jogador jogadorDetectado = itJogadoresDetectados.next();
-          // Notifica o jogador dono do missil sobre o jogador detectado
-          todosJogadoresAcertados += jogadorDetectado.getNome() + ",";
-        }
-        if (!todosJogadoresAcertados.isEmpty()) {
-          notificarJogadorPartida(missil.getJogadorDono(),
-              "Jogador acertados pelo missil", todosJogadoresAcertados);
-          // Iterando sobre os jogadores acertados para matá-los
-          Iterator<Jogador> itJogadoresAcertados = jogadoresDetectados.iterator();
-          while (itJogadoresAcertados.hasNext()) {
-            Jogador jogadorAcertado = itJogadoresAcertados.next();
-            jogoPartida.matarJogador(jogadorAcertado);
-            notificarJogadorPartida(jogadorAcertado,
-                "Você foi acertado por um missil", missil.getJogadorDono().getNome());
-          }
-        }
-      }
-    }
-
-    // Método que roda cada turno, se a partida terminou, notifica os jogadores e
-    // chama outra função para finalizar a partida e remover da lista
-    static Boolean verificarFimJogoPartida(JogoPartida jogoPartida) throws IOException {
-      Jogador vencedor = jogoPartida.verificarFimPartida();
-      if (vencedor != null) {
-        notificarJogadorPartida(vencedor, "Voce e o vencedor!", "");
-        notificarJogadoresPartida(jogoPartida, "Partida finalizada", vencedor.getNome());
-        finalizarJogoPartida(jogoPartida);
-        return true;
-      }
-      return false;
-    }
-
-    // Método que seta o estado da partida como finalizada e remove da lista de
-    // partidas em andamento
-    static void finalizarJogoPartida(JogoPartida jogoPartida) {
-      System.out.println("Partida finalizada: " + jogoPartida.getId());
-      // Vamos pegar todos os jogadores para definir eles com nenhuma partida
-      List<Jogador> todosJogadores = jogoPartida.getTodosJogadores();
-      Iterator<Jogador> it = todosJogadores.iterator();
-      while (it.hasNext()) {
-        Jogador jogador = it.next();
-        Cliente cliente = listaCliente.get(jogador.getNome());
-        cliente.setJogadorDesafiado(null);
-        cliente.setIdPartida(-1);
-      }
-      jogoPartida.finalizarPartida();
-      jogoPartidas.remove(jogoPartida);
-    }
-
     public void run() {
       try {
         // Código tirado dos slides
@@ -251,6 +67,7 @@ public class Server {
         Boolean sair = false;
 
         while (!sair) {
+          Map<String, Cliente> listaCliente = gameManager.getListaCliente();
           while ((sentence = inFromClient.readLine()) != null) {
             // Separando a sentença nas palavras
             String splitedSentence[] = sentence.split(" ");
@@ -263,48 +80,17 @@ public class Server {
 
                 String nomeCliente = splitedSentence[1];
 
-                // Criando um token para o cliente, o cliente receberá esse token e deve
-                // utilizá-lo para garantir sua identidade, poderíamos gerar um hash a partir do
-                // nome e um salt mas um randomUUID já garante a unicidade necessária
-                // String tokenCliente = UUID.randomUUID().toString();
-                String tokenCliente = nomeCliente.toLowerCase();
-                System.out.println("Cadastrando cliente: " + nomeCliente + " com token: " + tokenCliente);
-
-                Cliente novoCliente = new Cliente(nomeCliente, tokenCliente, connectionSocket);
-
-                // Tenta adicionar o cliente na lista, esse método retorna o item anterior
-                // daquela chave (nomecliente), ou seja, se não existir item com aquela chave,
-                // retorna null
-                // ChatGPT sugeriu o HashMap do listaCliente e esse método putIfAbsent
-                if (listaCliente.putIfAbsent(nomeCliente, novoCliente) != null) {
-                  outToClient.writeBytes("0|Um cliente com esse nome ja existe|\n");
-                } else {
-                  outToClient.writeBytes("1|Cadastrado com sucesso|" + tokenCliente + "\n");
-                }
+                gameManager.inserirCliente(listaCliente, nomeCliente, connectionSocket);
                 break;
               }
               // LISTARPARTIDAS
               case "LISTARPARTIDAS": {
-                String partidasServidor = "";
-                Iterator<Partida> it = Server.partidas.iterator();
-                while (it.hasNext()) {
-                  Partida partida = it.next();
-                  partidasServidor += partida.getInfo();
-                  partidasServidor += ";";
-                }
-                outToClient.writeBytes("1|Partidas públicas|" + partidasServidor + "\n");
+                gameManager.listarPartidas(outToClient);
                 break;
               }
               // LISTARJOGADORES
               case "LISTARJOGADORES": {
-                String clientesServidor = "";
-                Iterator<Cliente> it = listaCliente.values().iterator();
-                while (it.hasNext()) {
-                  Cliente cliente = it.next();
-                  clientesServidor += cliente.getNome();
-                  clientesServidor += ";";
-                }
-                outToClient.writeBytes("1|Jogadores conectados|" + clientesServidor + "\n");
+                gameManager.listarJogadores(outToClient);
                 break;
               }
               // ENTRARPARTIDA <nome> <token> <idPartida>
@@ -333,7 +119,7 @@ public class Server {
                 }
 
                 // Percorre todas partidas e verifica se o id
-                Partida partidaEscolhida = encontrarPartida(idPartida);
+                Partida partidaEscolhida = gameManager.encontrarPartida(idPartida);
 
                 // Partida não encontrada
                 if (partidaEscolhida == null) {
@@ -358,12 +144,12 @@ public class Server {
 
                 // Se o cliente já estava em alguma partida
                 if (idPartidaCliente != -1) {
-                  JogoPartida partidaAndamento = encontrarPartidaAndamento(idPartidaCliente);
+                  JogoPartida partidaAndamento = gameManager.encontrarPartidaAndamento(idPartidaCliente);
                   if (partidaAndamento != null) {
                     outToClient.writeBytes("0|Nao e possivel trocar de partida durante um jogo|\n");
                     break;
                   }
-                  Partida partidaAnterior = encontrarPartida(idPartidaCliente);
+                  Partida partidaAnterior = gameManager.encontrarPartida(idPartidaCliente);
                   if (partidaAnterior != null) {
                     // Remove o cliente da partida anterior
                     partidaAnterior.removerCliente(cliente);
@@ -380,7 +166,7 @@ public class Server {
                 outToClient.writeBytes("1|Entrou na partida com sucesso|\n");
 
                 // Tenta iniciar a partida
-                tentarIniciarPartida(partidaEscolhida);
+                gameManager.tentarIniciarPartida(partidaEscolhida);
                 break;
               }
               // DESAFIAR <nomeDesafiante> <token> <nomeDesafiado>
@@ -400,7 +186,7 @@ public class Server {
 
                 // Verifica se o desafiante está em uma partida em andamento
                 int idPartidaDesafiante = clienteDesafiante.getIdPartida();
-                JogoPartida partidaAndamento = encontrarPartidaAndamento(idPartidaDesafiante);
+                JogoPartida partidaAndamento = gameManager.encontrarPartidaAndamento(idPartidaDesafiante);
                 if (partidaAndamento != null) {
                   outToClient.writeBytes("0|Nao e possivel desafiar durante uma partida em andamento|\n");
                   break;
@@ -415,7 +201,7 @@ public class Server {
                 // Se o destinatario não desafiou o remetente, então vamos apenas enviar o nosso
                 // desafio para ele
                 if (!nomeDesafiante.equals(clienteDesafiado.getJogadorDesafiado())) {
-                  notificarJogadorPartida(clienteDesafiado, "Desafio recebido", nomeDesafiante);
+                  gameManager.notificarJogadorPartida(clienteDesafiado, "Desafio recebido", nomeDesafiante);
 
                   clienteDesafiante.setJogadorDesafiado(nomeDesafiado);
 
@@ -430,15 +216,14 @@ public class Server {
                 clientes.add(clienteDesafiante);
                 clientes.add(clienteDesafiado);
 
-                int idPartida = idAutoIncrement;
-                idAutoIncrement++;
+                int idPartida = gameManager.proximoIdAutoIncrement();
 
                 clienteDesafiante.setIdPartida(idPartida);
                 clienteDesafiado.setIdPartida(idPartida);
 
                 JogoPartida novaPartida = new JogoPartida(idPartida, clientes, null);
 
-                iniciarJogoPartida(novaPartida);
+                gameManager.iniciarJogoPartida(novaPartida);
                 break;
               }
               // MOVER <nome> <token> <posicaoX> <posicaoY>
@@ -459,7 +244,7 @@ public class Server {
                 if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
                   break;
 
-                JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
+                JogoPartida partidaAndamento = gameManager.encontrarPartidaAndamento(cliente.getIdPartida());
                 if (partidaAndamento == null) {
                   outToClient.writeBytes("0|Cliente nao esta em uma partida em andamento|\n");
                   break;
@@ -475,7 +260,7 @@ public class Server {
                 } else {
                   outToClient.writeBytes("1|Movimento realizado com sucesso|\n");
 
-                  proximoTurnoPartida(partidaAndamento);
+                  gameManager.proximoTurnoPartida(partidaAndamento);
                 }
                 break;
               }
@@ -497,7 +282,7 @@ public class Server {
                 if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
                   break;
 
-                JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
+                JogoPartida partidaAndamento = gameManager.encontrarPartidaAndamento(cliente.getIdPartida());
                 if (partidaAndamento == null) {
                   outToClient.writeBytes("0|Cliente nao esta em uma partida em andamento|\n");
                   break;
@@ -515,7 +300,7 @@ public class Server {
                   outToClient.writeBytes("1|Ataque realizado com sucesso|\n");
 
                   // Avança para o próximo turno
-                  proximoTurnoPartida(partidaAndamento);
+                  gameManager.proximoTurnoPartida(partidaAndamento);
                 }
                 break;
               }
@@ -537,7 +322,7 @@ public class Server {
                 if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
                   break;
 
-                JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
+                JogoPartida partidaAndamento = gameManager.encontrarPartidaAndamento(cliente.getIdPartida());
                 if (partidaAndamento == null) {
                   outToClient.writeBytes("0|Cliente nao esta em uma partida em andamento|\n");
                   break;
@@ -555,7 +340,7 @@ public class Server {
                   outToClient.writeBytes("1|Sonar utilizado com sucesso|\n");
 
                   // Avança para o próximo turno
-                  proximoTurnoPartida(partidaAndamento);
+                  gameManager.proximoTurnoPartida(partidaAndamento);
                 }
                 break;
               }
@@ -573,7 +358,7 @@ public class Server {
                 if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
                   break;
 
-                JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
+                JogoPartida partidaAndamento = gameManager.encontrarPartidaAndamento(cliente.getIdPartida());
                 if (partidaAndamento == null) {
                   outToClient.writeBytes("0|Cliente nao esta em uma partida em andamento|\n");
                   break;
@@ -587,7 +372,7 @@ public class Server {
                 outToClient.writeBytes("1|Turno passado com sucesso|\n");
 
                 // Avança para o próximo turno
-                proximoTurnoPartida(partidaAndamento);
+                gameManager.proximoTurnoPartida(partidaAndamento);
                 break;
               }
               // SAIRPARTIDA <nome> <token>
@@ -607,11 +392,12 @@ public class Server {
                 cliente.setJogadorDesafiado(null);
 
                 // Caso o cliente esteja em uma partida em andamento
-                JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
+                JogoPartida partidaAndamento = gameManager.encontrarPartidaAndamento(cliente.getIdPartida());
                 if (partidaAndamento != null) {
+                  String turno = partidaAndamento.getJogadorTurno();
                   partidaAndamento.removerJogador(partidaAndamento.buscarJogadorPorNome(nomeCliente));
-                  if(partidaAndamento.getJogadorTurno() == nomeCliente) {
-                    proximoTurnoPartida(partidaAndamento);
+                  if (turno.equals(nomeCliente)) {
+                    gameManager.proximoTurnoPartida(partidaAndamento);
                   }
                   cliente.setIdPartida(-1);
                   outToClient.writeBytes("1|Saiu da partida|\n");
@@ -619,7 +405,7 @@ public class Server {
                 }
 
                 // Não está em uma partida em andamento, pega a partida do cliente
-                Partida partida = encontrarPartida(cliente.getIdPartida());
+                Partida partida = gameManager.encontrarPartida(cliente.getIdPartida());
 
                 if (partida != null) {
                   partida.removerCliente(cliente);
@@ -682,10 +468,7 @@ public class Server {
     System.out.println("Servidor iniciado na porta " + Constants.PORTA_SERVIDOR);
 
     try {
-      // Loop para criar partidas
-      for (int i = 0; i < Constants.NUMERO_PARTIDAS; i++) {
-        partidas.add(new Partida(i + 1));
-      }
+      gameManager.criarPartidas();
 
       while (true) {
         // Aceite todas as conexões de entrada
@@ -695,7 +478,7 @@ public class Server {
             + connectionSocket.getPort());
 
         // Declarando um ClientHandler (thread) para cada conexão
-        ClientHandler clientHandler = new ClientHandler(connectionSocket);
+        ClientHandler clientHandler = new ClientHandler(connectionSocket, gameManager);
         clientHandler.start();
       }
     } catch (Exception e) {
