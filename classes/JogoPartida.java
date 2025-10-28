@@ -106,6 +106,10 @@ public class JogoPartida {
     return false;
   }
 
+  public int getNumTurno() {
+    return this.numTurno;
+  }
+
   public Jogador buscarJogadorPorNome(String nome) {
     Iterator<Jogador> iterator = this.jogadores.iterator();
     while (iterator.hasNext()) {

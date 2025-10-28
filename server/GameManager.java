@@ -185,11 +185,23 @@ public class GameManager {
   // seus misseis
   public void lidarJogadoresAtaques(JogoPartida jogoPartida) throws IOException {
     synchronized (jogoPartida) {
+      List<Missil> misseis = jogoPartida.getMisseis();
       // Loop de todos os misseis
-      Iterator<Missil> itMisseis = jogoPartida.getMisseis().iterator();
-      while (itMisseis.hasNext()) {
+      ListIterator<Missil> itMisseis = misseis.listIterator(misseis.size());
+      while (itMisseis.hasPrevious()) {
         String todosJogadoresAcertados = "";
-        Missil missil = itMisseis.next();
+        Missil missil = itMisseis.previous();
+
+        int numTurnoAtual = jogoPartida.getNumTurno();
+        int numTurnoMissil = missil.getNum();
+
+        if (numTurnoMissil < numTurnoAtual) {
+          break;
+        }
+
+        if (numTurnoMissil != numTurnoAtual) {
+          continue;
+        }
 
         // Pega a lista de todos jogadores próximos do missil
         List<Jogador> jogadoresDetectados = jogoPartida.detectarJogadores(missil);
