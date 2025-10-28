@@ -147,19 +147,27 @@ public class JogoPartida {
 
   public Boolean movimento(String nomeJogador, int posicaoX, int posicaoY, Boolean deslocamento) {
     Jogador jogador = buscarJogadorPorNome(nomeJogador);
-
-    if (jogador != null) {
-      if (deslocamento) {
-        posicaoX = jogador.traduzirPosicaoX(posicaoX);
-        posicaoY = jogador.traduzirPosicaoY(posicaoY);
-      }
-      return jogador.mover(posicaoX, posicaoY);
+    if (jogador == null) {
+      return false;
     }
-    return false;
+
+    if (deslocamento) {
+      posicaoX = jogador.traduzirPosicaoX(posicaoX);
+      posicaoY = jogador.traduzirPosicaoY(posicaoY);
+    }
+    return jogador.mover(posicaoX, posicaoY);
   }
 
-  public Boolean ataque(String nomeJogador, int posicaoX, int posicaoY) {
+  public Boolean ataque(String nomeJogador, int posicaoX, int posicaoY, Boolean deslocamento) {
     Jogador atacante = buscarJogadorPorNome(nomeJogador);
+    if (atacante == null) {
+      return false;
+    }
+
+    if (deslocamento) {
+      posicaoX = atacante.traduzirPosicaoX(posicaoX);
+      posicaoY = atacante.traduzirPosicaoY(posicaoY);
+    }
 
     if (atacante == null || !atacante.getPosicao().distanciaPermitida(posicaoX, posicaoY, Constants.DISTANCIA_ATAQUE,
         Constants.MODO_DISTANCIA_ATAQUE)) {
@@ -195,10 +203,15 @@ public class JogoPartida {
     this.jogadoresMortos.add(jogador);
   }
 
-  public Boolean dispositivoProximidade(String nomeJogador, int posicaoX, int posicaoY) {
+  public Boolean dispositivoProximidade(String nomeJogador, int posicaoX, int posicaoY, Boolean deslocamento) {
     Jogador jogador = buscarJogadorPorNome(nomeJogador);
     if (jogador == null) {
       return false;
+    }
+
+    if (deslocamento) {
+      posicaoX = jogador.traduzirPosicaoX(posicaoX);
+      posicaoY = jogador.traduzirPosicaoY(posicaoY);
     }
 
     if (!jogador.getPosicao().distanciaPermitida(posicaoX, posicaoY, Constants.DISTANCIA_DISPOSITIVO_PROXIMIDADE,
@@ -253,8 +266,7 @@ public class JogoPartida {
   }
 
   // Método para finalizar a partida, limpando os clientes e marcando a partida
-  // como
-  // não em andamento caso a partida base não seja nula
+  // como não em andamento caso a partida base não seja nula
   public void finalizarPartida() {
     if (partidaBase != null) {
       partidaBase.setAndamento(false);

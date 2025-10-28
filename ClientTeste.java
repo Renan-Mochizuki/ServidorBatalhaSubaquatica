@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ClientTeste {
   String comandos1[] = {
-      "cadastro a",
+      "cadastrar a",
       "desafiar a a b",
       "mover a a 1 1 1",
       "mover a a 1 1 1",
@@ -38,7 +38,7 @@ public class ClientTeste {
   };
 
   String comandos2[] = {
-      "cadastro b",
+      "cadastrar b",
       "desafiar b b a",
       "mover b b 1 1 1",
       "mover b b 1 1 1",
