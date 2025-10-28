@@ -2,7 +2,6 @@ package server;
 
 import java.util.*;
 import classes.*;
-import java.util.Collections.*;
 import java.io.*;
 import java.net.*;
 
@@ -31,7 +30,7 @@ public class GameManager {
   public synchronized void resetarIdAutoIncrement() {
     idAutoIncrement = Constants.NUMERO_PARTIDAS + 1;
   }
-  
+
   public void listarJogadores(DataOutputStream outToClient) throws Exception {
     StringBuilder jogadoresServidor = new StringBuilder();
 
@@ -94,8 +93,11 @@ public class GameManager {
   // Método que notifica um único jogador de uma partida com uma mensagem e um
   // valor passado
   public void notificarJogadorPartida(Cliente cliente, String mensagem, String valor) throws IOException {
-    DataOutputStream outToClient = new DataOutputStream(cliente.getConnectionSocket().getOutputStream());
-    outToClient.writeBytes("1|" + mensagem + "|" + valor + "\n");
+    // Sincroniza por cliente para evitar escritas concorrentes no mesmo socket
+    synchronized (cliente) {
+      DataOutputStream outToClient = new DataOutputStream(cliente.getConnectionSocket().getOutputStream());
+      outToClient.writeBytes("1|" + mensagem + "|" + valor + "\n");
+    }
   }
 
   // Método que notifica todos os jogadores de uma partida com uma mensagem e um
@@ -114,23 +116,25 @@ public class GameManager {
   // Método que notifica o dono do dispositivo sobre os jogadores detectados por
   // seus dispositivos de proximidade
   public void notificarJogadoresDetectados(JogoPartida jogoPartida) throws IOException {
-    // Loop de todos os dispositivos
-    Iterator<DispositivoProximidade> itDispositivos = jogoPartida.getDispositivos().iterator();
-    while (itDispositivos.hasNext()) {
-      String todosJogadoresDetectados = "";
-      DispositivoProximidade dispositivo = itDispositivos.next();
+    synchronized (jogoPartida) {
+      // Loop de todos os dispositivos
+      Iterator<DispositivoProximidade> itDispositivos = jogoPartida.getDispositivos().iterator();
+      while (itDispositivos.hasNext()) {
+        String todosJogadoresDetectados = "";
+        DispositivoProximidade dispositivo = itDispositivos.next();
 
-      // Pega a lista de todos jogadores próximos do dispositivo
-      List<Jogador> jogadoresDetectados = jogoPartida.detectarJogadores(dispositivo);
-      Iterator<Jogador> itJogadoresDetectados = jogadoresDetectados.iterator();
-      while (itJogadoresDetectados.hasNext()) {
-        Jogador jogadorDetectado = itJogadoresDetectados.next();
-        // Notifica o jogador dono do dispositivo sobre o jogador detectado
-        todosJogadoresDetectados += jogadorDetectado.getNome() + ",";
-      }
-      if (!todosJogadoresDetectados.isEmpty()) {
-        notificarJogadorPartida(dispositivo.getJogadorDono(),
-            "Jogador detectado pelo dispositivo " + dispositivo.getNum(), todosJogadoresDetectados);
+        // Pega a lista de todos jogadores próximos do dispositivo
+        List<Jogador> jogadoresDetectados = jogoPartida.detectarJogadores(dispositivo);
+        Iterator<Jogador> itJogadoresDetectados = jogadoresDetectados.iterator();
+        while (itJogadoresDetectados.hasNext()) {
+          Jogador jogadorDetectado = itJogadoresDetectados.next();
+          // Notifica o jogador dono do dispositivo sobre o jogador detectado
+          todosJogadoresDetectados += jogadorDetectado.getNome() + ",";
+        }
+        if (!todosJogadoresDetectados.isEmpty()) {
+          notificarJogadorPartida(dispositivo.getJogadorDono(),
+              "Jogador detectado pelo dispositivo " + dispositivo.getNum(), todosJogadoresDetectados);
+        }
       }
     }
   }
@@ -155,7 +159,7 @@ public class GameManager {
   // Método para iniciar o jogo da partida, adicionando na lista de partidas e
   // notificando os jogadores sobre o inicio da partida e o turno
   public void iniciarJogoPartida(JogoPartida novaPartida) throws IOException {
-    synchronized (novaPartida) {
+    synchronized (jogoPartidas) {
       jogoPartidas.add(novaPartida);
     }
 
@@ -194,30 +198,32 @@ public class GameManager {
   // Método que notifica o dono do dispositivo sobre os jogadores acertados por
   // seus misseis
   public void lidarJogadoresAtaques(JogoPartida jogoPartida) throws IOException {
-    // Loop de todos os misseis
-    Iterator<Missil> itMisseis = jogoPartida.getMisseis().iterator();
-    while (itMisseis.hasNext()) {
-      String todosJogadoresAcertados = "";
-      Missil missil = itMisseis.next();
+    synchronized (jogoPartida) {
+      // Loop de todos os misseis
+      Iterator<Missil> itMisseis = jogoPartida.getMisseis().iterator();
+      while (itMisseis.hasNext()) {
+        String todosJogadoresAcertados = "";
+        Missil missil = itMisseis.next();
 
-      // Pega a lista de todos jogadores próximos do missil
-      List<Jogador> jogadoresDetectados = jogoPartida.detectarJogadores(missil);
-      Iterator<Jogador> itJogadoresDetectados = jogadoresDetectados.iterator();
-      while (itJogadoresDetectados.hasNext()) {
-        Jogador jogadorDetectado = itJogadoresDetectados.next();
-        // Notifica o jogador dono do missil sobre o jogador detectado
-        todosJogadoresAcertados += jogadorDetectado.getNome() + ",";
-      }
-      if (!todosJogadoresAcertados.isEmpty()) {
-        notificarJogadorPartida(missil.getJogadorDono(),
-            "Jogador acertados pelo missil", todosJogadoresAcertados);
-        // Iterando sobre os jogadores acertados para matá-los
-        Iterator<Jogador> itJogadoresAcertados = jogadoresDetectados.iterator();
-        while (itJogadoresAcertados.hasNext()) {
-          Jogador jogadorAcertado = itJogadoresAcertados.next();
-          jogoPartida.matarJogador(jogadorAcertado);
-          notificarJogadorPartida(jogadorAcertado,
-              "Você foi acertado por um missil", missil.getJogadorDono().getNome());
+        // Pega a lista de todos jogadores próximos do missil
+        List<Jogador> jogadoresDetectados = jogoPartida.detectarJogadores(missil);
+        Iterator<Jogador> itJogadoresDetectados = jogadoresDetectados.iterator();
+        while (itJogadoresDetectados.hasNext()) {
+          Jogador jogadorDetectado = itJogadoresDetectados.next();
+          // Notifica o jogador dono do missil sobre o jogador detectado
+          todosJogadoresAcertados += jogadorDetectado.getNome() + ",";
+        }
+        if (!todosJogadoresAcertados.isEmpty()) {
+          notificarJogadorPartida(missil.getJogadorDono(),
+              "Jogador acertados pelo missil", todosJogadoresAcertados);
+          // Iterando sobre os jogadores acertados para matá-los
+          Iterator<Jogador> itJogadoresAcertados = jogadoresDetectados.iterator();
+          while (itJogadoresAcertados.hasNext()) {
+            Jogador jogadorAcertado = itJogadoresAcertados.next();
+            jogoPartida.matarJogador(jogadorAcertado);
+            notificarJogadorPartida(jogadorAcertado,
+                "Você foi acertado por um missil", missil.getJogadorDono().getNome());
+          }
         }
       }
     }

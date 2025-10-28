@@ -145,9 +145,14 @@ public class JogoPartida {
     return null;
   }
 
-  public Boolean movimento(String nomeJogador, int posicaoX, int posicaoY) {
+  public Boolean movimento(String nomeJogador, int posicaoX, int posicaoY, Boolean deslocamento) {
     Jogador jogador = buscarJogadorPorNome(nomeJogador);
+
     if (jogador != null) {
+      if (deslocamento) {
+        posicaoX = jogador.traduzirPosicaoX(posicaoX);
+        posicaoY = jogador.traduzirPosicaoY(posicaoY);
+      }
       return jogador.mover(posicaoX, posicaoY);
     }
     return false;

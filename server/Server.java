@@ -226,7 +226,7 @@ public class Server {
                 gameManager.iniciarJogoPartida(novaPartida);
                 break;
               }
-              // MOVER <nome> <token> <posicaoX> <posicaoY>
+              // MOVER <nome> <token> <posicaoX> <posicaoY> <modoDeslocamento>
               case "MOVER": {
                 if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
                     !verificarCampo("token", 2, splitedSentence, outToClient) ||
@@ -239,6 +239,14 @@ public class Server {
                 int posicaoX = Integer.parseInt(splitedSentence[3]);
                 int posicaoY = Integer.parseInt(splitedSentence[4]);
 
+                // Opção adicional, se for true, então as posições passadas não serão tratadas
+                // como posições absolutas, mas como deslocamentos relativos
+                Boolean deslocamento = false;
+                if (splitedSentence.length > 5) {
+                  String deslocamentoStr = splitedSentence[5];
+                  deslocamento = deslocamentoStr.equals("true") || deslocamentoStr.equals("1");
+                }
+
                 Cliente cliente = listaCliente.get(nomeCliente);
 
                 if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
@@ -250,17 +258,16 @@ public class Server {
                   break;
                 }
 
-                if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
-                  outToClient.writeBytes("0|Nao e o turno do jogador|\n");
-                  break;
-                }
-
-                if (!partidaAndamento.movimento(nomeCliente, posicaoX, posicaoY)) {
-                  outToClient.writeBytes("0|Movimento invalido|\n");
-                } else {
-                  outToClient.writeBytes("1|Movimento realizado com sucesso|\n");
-
-                  gameManager.proximoTurnoPartida(partidaAndamento);
+                // Garante atomicidade por partida
+                synchronized (partidaAndamento) {
+                  if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
+                    outToClient.writeBytes("0|Nao e o turno do jogador|\n");
+                  } else if (!partidaAndamento.movimento(nomeCliente, posicaoX, posicaoY, deslocamento)) {
+                    outToClient.writeBytes("0|Movimento invalido|\n");
+                  } else {
+                    outToClient.writeBytes("1|Movimento realizado com sucesso|\n");
+                    gameManager.proximoTurnoPartida(partidaAndamento);
+                  }
                 }
                 break;
               }
@@ -288,19 +295,16 @@ public class Server {
                   break;
                 }
 
-                if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
-                  outToClient.writeBytes("0|Nao e o turno do jogador|\n");
-                  break;
-                }
-
-                // Realiza o ataque
-                if (!partidaAndamento.ataque(nomeCliente, posicaoX, posicaoY)) {
-                  outToClient.writeBytes("0|Ataque invalido|\n");
-                } else {
-                  outToClient.writeBytes("1|Ataque realizado com sucesso|\n");
-
-                  // Avança para o próximo turno
-                  gameManager.proximoTurnoPartida(partidaAndamento);
+                synchronized (partidaAndamento) {
+                  if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
+                    outToClient.writeBytes("0|Nao e o turno do jogador|\n");
+                  } else if (!partidaAndamento.ataque(nomeCliente, posicaoX, posicaoY)) {
+                    outToClient.writeBytes("0|Ataque invalido|\n");
+                  } else {
+                    outToClient.writeBytes("1|Ataque realizado com sucesso|\n");
+                    // Avança para o próximo turno
+                    gameManager.proximoTurnoPartida(partidaAndamento);
+                  }
                 }
                 break;
               }
@@ -328,19 +332,17 @@ public class Server {
                   break;
                 }
 
-                if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
-                  outToClient.writeBytes("0|Nao e o turno do jogador|\n");
-                  break;
-                }
-
-                // Realiza a ação do dispositivo de proximidade
-                if (!partidaAndamento.dispositivoProximidade(nomeCliente, posicaoX, posicaoY)) {
-                  outToClient.writeBytes("0|Sonar invalido|\n");
-                } else {
-                  outToClient.writeBytes("1|Sonar utilizado com sucesso|\n");
-
-                  // Avança para o próximo turno
-                  gameManager.proximoTurnoPartida(partidaAndamento);
+                synchronized (partidaAndamento) {
+                  // Realiza a ação do dispositivo de proximidade dentro do lock da partida
+                  if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
+                    outToClient.writeBytes("0|Nao e o turno do jogador|\n");
+                  } else if (!partidaAndamento.dispositivoProximidade(nomeCliente, posicaoX, posicaoY)) {
+                    outToClient.writeBytes("0|Sonar invalido|\n");
+                  } else {
+                    outToClient.writeBytes("1|Sonar utilizado com sucesso|\n");
+                    // Avança para o próximo turno
+                    gameManager.proximoTurnoPartida(partidaAndamento);
+                  }
                 }
                 break;
               }
@@ -364,15 +366,15 @@ public class Server {
                   break;
                 }
 
-                if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
-                  outToClient.writeBytes("0|Nao e o turno do jogador|\n");
-                  break;
+                synchronized (partidaAndamento) {
+                  if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
+                    outToClient.writeBytes("0|Nao e o turno do jogador|\n");
+                  } else {
+                    outToClient.writeBytes("1|Turno passado com sucesso|\n");
+                    // Avança para o próximo turno
+                    gameManager.proximoTurnoPartida(partidaAndamento);
+                  }
                 }
-
-                outToClient.writeBytes("1|Turno passado com sucesso|\n");
-
-                // Avança para o próximo turno
-                gameManager.proximoTurnoPartida(partidaAndamento);
                 break;
               }
               // SAIRPARTIDA <nome> <token>
@@ -394,13 +396,15 @@ public class Server {
                 // Caso o cliente esteja em uma partida em andamento
                 JogoPartida partidaAndamento = gameManager.encontrarPartidaAndamento(cliente.getIdPartida());
                 if (partidaAndamento != null) {
-                  String turno = partidaAndamento.getJogadorTurno();
-                  partidaAndamento.removerJogador(partidaAndamento.buscarJogadorPorNome(nomeCliente));
-                  if (turno.equals(nomeCliente)) {
-                    gameManager.proximoTurnoPartida(partidaAndamento);
+                  synchronized (partidaAndamento) {
+                    String turno = partidaAndamento.getJogadorTurno();
+                    partidaAndamento.removerJogador(partidaAndamento.buscarJogadorPorNome(nomeCliente));
+                    if (turno.equals(nomeCliente)) {
+                      gameManager.proximoTurnoPartida(partidaAndamento);
+                    }
+                    cliente.setIdPartida(-1);
+                    outToClient.writeBytes("1|Saiu da partida|\n");
                   }
-                  cliente.setIdPartida(-1);
-                  outToClient.writeBytes("1|Saiu da partida|\n");
                   break;
                 }
 
