@@ -140,7 +140,7 @@ public class Server {
     // valor passado
     static void notificarJogadoresPartida(JogoPartida jogoPartida, String mensagem, String valor) throws IOException {
       // Percorre todos os clientes da partida e envia a mensagem
-      Iterator<Jogador> it = jogoPartida.getJogadores().iterator();
+      Iterator<Jogador> it = jogoPartida.getTodosJogadores().iterator();
       while (it.hasNext()) {
         Jogador jogador = it.next();
         notificarJogadorPartida(jogador, mensagem, valor);
@@ -210,10 +210,12 @@ public class Server {
       }
     }
 
+    // Método que roda cada turno, se a partida terminou, notifica os jogadores e
+    // chama outra função para finalizar a partida e remover da lista
     static Boolean verificarFimJogoPartida(JogoPartida jogoPartida) throws IOException {
       Jogador vencedor = jogoPartida.verificarFimPartida();
       if (vencedor != null) {
-        notificarJogadorPartida(vencedor, "Você é o vencedor!", null);
+        notificarJogadorPartida(vencedor, "Voce e o vencedor!", "");
         notificarJogadoresPartida(jogoPartida, "Partida finalizada", vencedor.getNome());
         finalizarJogoPartida(jogoPartida);
         return true;
@@ -221,9 +223,19 @@ public class Server {
       return false;
     }
 
+    // Método que seta o estado da partida como finalizada e remove da lista de
+    // partidas em andamento
     static void finalizarJogoPartida(JogoPartida jogoPartida) {
       System.out.println("Partida finalizada: " + jogoPartida.getId());
-      // TODO: MANTER JOGADORES MORTOS NA LISTA DE JOGADORES
+      // Vamos pegar todos os jogadores para definir eles com nenhuma partida
+      List<Jogador> todosJogadores = jogoPartida.getTodosJogadores();
+      Iterator<Jogador> it = todosJogadores.iterator();
+      while (it.hasNext()) {
+        Jogador jogador = it.next();
+        Cliente cliente = listaCliente.get(jogador.getNome());
+        cliente.setJogadorDesafiado(null);
+        cliente.setIdPartida(-1);
+      }
       jogoPartida.finalizarPartida();
       jogoPartidas.remove(jogoPartida);
     }
@@ -429,42 +441,6 @@ public class Server {
                 iniciarJogoPartida(novaPartida);
                 break;
               }
-              // SAIRPARTIDA <nome> <token>
-              case "SAIRPARTIDA": {
-                if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
-                    !verificarCampo("token", 2, splitedSentence, outToClient))
-                  break;
-
-                String nomeCliente = splitedSentence[1];
-                String tokenCliente = splitedSentence[2];
-
-                Cliente cliente = listaCliente.get(nomeCliente);
-
-                if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
-                  break;
-
-                // TODO
-                JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
-                if (partidaAndamento != null) {
-                  partidaAndamento.removerJogador(partidaAndamento.buscarJogadorPorNome(nomeCliente));
-                  cliente.setIdPartida(-1);
-                  outToClient.writeBytes("1|Saiu da partida|\n");
-                  break;
-                }
-
-                // Pega a partida do cliente
-                Partida partida = encontrarPartida(cliente.getIdPartida());
-
-                if (partida != null) {
-                  partida.removerCliente(cliente);
-                  cliente.setIdPartida(-1);
-                  outToClient.writeBytes("1|Saiu da partida|\n");
-                } else {
-                  outToClient.writeBytes("0|Partida inexistente|\n");
-                }
-
-                break;
-              }
               // MOVER <nome> <token> <posicaoX> <posicaoY>
               case "MOVER": {
                 if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
@@ -612,6 +588,47 @@ public class Server {
 
                 // Avança para o próximo turno
                 proximoTurnoPartida(partidaAndamento);
+                break;
+              }
+              // SAIRPARTIDA <nome> <token>
+              case "SAIRPARTIDA": {
+                if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
+                    !verificarCampo("token", 2, splitedSentence, outToClient))
+                  break;
+
+                String nomeCliente = splitedSentence[1];
+                String tokenCliente = splitedSentence[2];
+
+                Cliente cliente = listaCliente.get(nomeCliente);
+
+                if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+                  break;
+
+                cliente.setJogadorDesafiado(null);
+
+                // Caso o cliente esteja em uma partida em andamento
+                JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
+                if (partidaAndamento != null) {
+                  partidaAndamento.removerJogador(partidaAndamento.buscarJogadorPorNome(nomeCliente));
+                  if(partidaAndamento.getJogadorTurno() == nomeCliente) {
+                    proximoTurnoPartida(partidaAndamento);
+                  }
+                  cliente.setIdPartida(-1);
+                  outToClient.writeBytes("1|Saiu da partida|\n");
+                  break;
+                }
+
+                // Não está em uma partida em andamento, pega a partida do cliente
+                Partida partida = encontrarPartida(cliente.getIdPartida());
+
+                if (partida != null) {
+                  partida.removerCliente(cliente);
+                  cliente.setIdPartida(-1);
+                  outToClient.writeBytes("1|Saiu da partida|\n");
+                } else {
+                  outToClient.writeBytes("0|Partida inexistente|\n");
+                }
+
                 break;
               }
               // SAIR <nome> <token>

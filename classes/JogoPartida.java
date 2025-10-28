@@ -10,12 +10,16 @@ public class JogoPartida {
   private List<Missil> misseis;
   private String jogadorTurno;
   private int numTurno;
+  // Essa lista serve para podermos enviar mensagens aos jogadores mortos que
+  // ainda não sairam da partida e podermos resetar seus atributos no fim
+  private List<Jogador> jogadoresMortos;
 
   public JogoPartida(int id, List<Cliente> clientes, Partida partidaBase) {
     this.id = id;
     this.partidaBase = partidaBase;
     this.dispositivos = new ArrayList<>();
     this.jogadores = new ArrayList<>();
+    this.jogadoresMortos = new ArrayList<>();
     this.misseis = new ArrayList<>();
     this.jogadorTurno = null;
     this.numTurno = 0;
@@ -69,6 +73,17 @@ public class JogoPartida {
     return this.jogadores;
   }
 
+  public List<Jogador> getJogadoresMortos() {
+    return this.jogadoresMortos;
+  }
+
+  // Retorna a lista de todos jogadores (vivos ou mortos)
+  public List<Jogador> getTodosJogadores() {
+    List<Jogador> todosJogadores = new ArrayList<>(this.jogadores);
+    todosJogadores.addAll(this.jogadoresMortos);
+    return todosJogadores;
+  }
+
   public List<DispositivoProximidade> getDispositivos() {
     return this.dispositivos;
   }
@@ -81,9 +96,14 @@ public class JogoPartida {
     return jogadorTurno;
   }
 
-  public void setJogadorTurno(String jogadorTurno) {
-    this.jogadorTurno = jogadorTurno;
-    this.numTurno++;
+  public Boolean setJogadorTurno(String jogadorTurno) {
+    Jogador jogador = buscarJogadorPorNome(jogadorTurno);
+    if (jogador != null) {
+      this.jogadorTurno = jogadorTurno;
+      this.numTurno++;
+      return true;
+    }
+    return false;
   }
 
   public Jogador buscarJogadorPorNome(String nome) {
@@ -166,7 +186,8 @@ public class JogoPartida {
 
   // Método para quando um jogador morrer
   public void matarJogador(Jogador jogador) {
-    removerJogador(jogador);
+    this.jogadores.remove(jogador);
+    this.jogadoresMortos.add(jogador);
   }
 
   public Boolean dispositivoProximidade(String nomeJogador, int posicaoX, int posicaoY) {
@@ -226,7 +247,8 @@ public class JogoPartida {
     return null;
   }
 
-  // Método para finalizar a partida, limpando os clientes e marcando a partida como
+  // Método para finalizar a partida, limpando os clientes e marcando a partida
+  // como
   // não em andamento caso a partida base não seja nula
   public void finalizarPartida() {
     if (partidaBase != null) {

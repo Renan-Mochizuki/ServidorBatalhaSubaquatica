@@ -33,7 +33,7 @@ public class Jogador extends Cliente {
   }
 
   // Método para mover o jogador de acordo com um deslocamento em X e Y
-  public Boolean mover(int posicaoX, int posicaoY) {
+  Boolean mover(int posicaoX, int posicaoY) {
     // Interpreta posicaoX/posicaoY como coordenadas de destino (absolutas)
     // Verifica se o destino está dentro do deslocamento máximo a partir da posição
     // atual
@@ -43,7 +43,7 @@ public class Jogador extends Cliente {
     }
 
     // Se a posição atual for igual à posição destino, não move
-    if(this.getPosicao().getX() == posicaoX && this.getPosicao().getY() == posicaoY){
+    if (this.getPosicao().getX() == posicaoX && this.getPosicao().getY() == posicaoY) {
       return false;
     }
 
@@ -60,7 +60,7 @@ public class Jogador extends Cliente {
   }
 
   // Método para adicionar dispositivo
-  public Boolean adicionarDispositivo() {
+  Boolean adicionarDispositivo() {
     if (this.numDispositivos < this.numMaxDispositivos) {
       this.numDispositivos++;
       return true;
@@ -69,7 +69,7 @@ public class Jogador extends Cliente {
   }
 
   // Método para remover dispositivo
-  public Boolean removerDispositivo() {
+  Boolean removerDispositivo() {
     if (this.numDispositivos > 0) {
       this.numDispositivos--;
       return true;
@@ -78,12 +78,12 @@ public class Jogador extends Cliente {
   }
 
   // Método para adicionar míssil
-  public void adicionarMissil() {
+  void adicionarMissil() {
     this.numMisseis++;
   }
 
   // Método para remover míssil
-  public Boolean removerMissil() {
+  Boolean removerMissil() {
     if (this.numMisseis > 0) {
       this.numMisseis--;
       return true;
