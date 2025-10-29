@@ -183,8 +183,23 @@ public class Jogo extends JFrame {
     direita.setBorder(new EmptyBorder(12, 12, 12, 12));
 
     JLabel titulo = new JLabel("Jogadores online");
-    titulo.setBorder(new EmptyBorder(0, 0, 8, 0));
+    titulo.setBorder(new EmptyBorder(0, 0, 0, 0));
     titulo.setFont(titulo.getFont().deriveFont(Font.BOLD, 14f));
+
+    JButton btnAtualizar = new JButton("Atualizar");
+    btnAtualizar.addActionListener(e -> {
+      if (connection != null && connection.isConnected()) {
+        connection.sendLine("LISTAR_JOGADORES");
+      } else {
+        JOptionPane.showMessageDialog(this, "Sem conexão com o servidor.", "Lista de jogadores",
+            JOptionPane.WARNING_MESSAGE);
+      }
+    });
+
+    JPanel northBar = new JPanel(new BorderLayout());
+    northBar.setBorder(new EmptyBorder(0, 0, 8, 0));
+    northBar.add(titulo, BorderLayout.WEST);
+    northBar.add(btnAtualizar, BorderLayout.EAST);
 
     painelLista = new JPanel();
     painelLista.setLayout(new BoxLayout(painelLista, BoxLayout.Y_AXIS));
@@ -193,7 +208,7 @@ public class Jogo extends JFrame {
         ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
     scroll.getVerticalScrollBar().setUnitIncrement(16);
 
-    direita.add(titulo, BorderLayout.NORTH);
+    direita.add(northBar, BorderLayout.NORTH);
     direita.add(scroll, BorderLayout.CENTER);
 
     // Barra superior com info do jogador atual
@@ -277,10 +292,10 @@ public class Jogo extends JFrame {
     JButton botao = new JButton("Ação");
     botao.setEnabled(habilitarBotao);
     botao.addActionListener(e -> {
-      // Integração: exemplo de envio de mensagem ao servidor quando clica em um
-      // jogador
+      // Enviar mensagem para o servidor ao clicar no jogador (ex.: convidar/desafiar)
       if (connection != null && connection.isConnected()) {
-        connection.sendLine("INTERACT " + nome);
+        // Protocolo no formato pipe: INTERACT|<nome>
+        connection.sendLine("INTERACT|" + nome);
       } else {
         JOptionPane.showMessageDialog(
             this,
@@ -497,6 +512,22 @@ public class Jogo extends JFrame {
     }
   }
 
+  // Atualiza o modelo de jogadores (lado direito) com uma lista CSV vinda do
+  // servidor
+  private void atualizarListaJogadoresDoServidor(String csv) {
+    if (csv == null)
+      csv = "";
+    String[] nomes = csv.split(",");
+    jogadoresModel.clear();
+    for (String n : nomes) {
+      String nome = n == null ? "" : n.trim();
+      if (!nome.isEmpty()) {
+        jogadoresModel.addElement(nome);
+      }
+    }
+    atualizarListaJogadores();
+  }
+
   private int alcance(int x1, int y1, int x2, int y2) {
     // Distância Chebyshev: max(|dx|, |dy|)
     return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
@@ -568,8 +599,9 @@ public class Jogo extends JFrame {
       String comandoServer = parts.length > 0 ? parts[0] : "";
       String codigoServer = parts.length > 1 ? parts[1] : "";
       String textoServer = parts.length > 2 ? parts[2] : "";
-      // String valoresServer = parts.length > 3 ? parts[3] : ""; // reservado para
-      // futuros parâmetros
+      String valoresServer = parts.length > 3 ? parts[3] : ""; // valores adicionais (ex.: lista CSV)
+
+      System.out.println("Recebido do servidor: " + line); 
 
       // 1) Fluxo de cadastro/login usando pipe
       if ("CADASTRAR".equalsIgnoreCase(comandoServer)) {
@@ -581,6 +613,11 @@ public class Jogo extends JFrame {
             loginButton.setEnabled(true);
           if (loginStatusLabel != null)
             loginStatusLabel.setText(" ");
+
+          // Após entrar na Home, solicitar lista atual de jogadores
+          if (connection != null && connection.isConnected()) {
+            connection.sendLine("LISTAR_JOGADORES");
+          }
         } else {
           // Falha: exibir textoServer (mensagem do backend) ou padrão
           String motivo = (textoServer != null && !textoServer.isEmpty()) ? textoServer : "Cadastro não realizado";
@@ -604,10 +641,13 @@ public class Jogo extends JFrame {
         JOptionPane.showMessageDialog(this, motivo, "Cadastro não realizado", JOptionPane.WARNING_MESSAGE);
         if (loginButton != null)
           loginButton.setEnabled(true);
-      } else if (line.startsWith("HOME_MSG ")) {
-        // Exemplo: HOME_MSG Ana: Olá!
-        if (mensagensArea != null) {
-          mensagensArea.append(line.substring(9) + "\n");
+      } else if ("CHATGLOBAL".equalsIgnoreCase(comandoServer)) {
+        // Protocolo sugerido: CHATGLOBAL|<from>|<texto>
+        String from = codigoServer; // usamos 'codigoServer' como remetente nesse caso
+        String msg = textoServer;
+        String display = (from != null && !from.isEmpty()) ? (from + ": " + msg) : msg;
+        if (mensagensArea != null && display != null && !display.isEmpty()) {
+          mensagensArea.append(display + "\n");
           mensagensArea.setCaretPosition(mensagensArea.getDocument().getLength());
         }
       } else if (line.startsWith("ENEMY_ATTACK ")) {
@@ -624,6 +664,21 @@ public class Jogo extends JFrame {
           } catch (NumberFormatException ignored) {
           }
         }
+      } else if ("JOGADORES".equalsIgnoreCase(comandoServer)) {
+        // Esperado: JOGADORES|200|OK|Ana,Bruno,Carla
+        if ("200".equals(codigoServer)) {
+          String csv = valoresServer != null && !valoresServer.isEmpty() ? valoresServer : textoServer;
+          atualizarListaJogadoresDoServidor(csv);
+        } else {
+          // erro ao listar – opcionalmente exibir no chat
+          if (mensagensArea != null) {
+            mensagensArea.append("Falha ao listar jogadores: " + textoServer + "\n");
+          }
+        }
+      } else if ("JOGO".equalsIgnoreCase(comandoServer) && "START".equalsIgnoreCase(codigoServer)) {
+        // Iniciar a partida e ir para tela de jogo
+        iniciarPartida();
+        cardLayout.show(root, "game");
       } else if (line.equals("TURN_PLAYER")) {
         // Servidor devolveu o turno ao jogador
         playerTurn = true;
