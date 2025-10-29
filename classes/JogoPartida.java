@@ -247,10 +247,26 @@ public class JogoPartida {
       return false;
     }
 
+    // Se já houver um dispositivo do mesmo jogador naquela posição, não permite
+    if(verificarDispositivoProximidadeExistente(jogador, posicaoX, posicaoY)) {
+      return false;
+    }
+
     DispositivoProximidade dispositivo = new DispositivoProximidade(posicaoX, posicaoY,
         Constants.ALCANCE_DISPOSITIVO_PROXIMIDADE, jogador, jogador.getNumDispositivos());
     this.dispositivos.add(dispositivo);
     return true;
+  }
+
+  public Boolean verificarDispositivoProximidadeExistente(Jogador jogador, int posicaoX, int posicaoY) {
+    Iterator<DispositivoProximidade> iterator = this.dispositivos.iterator();
+    while (iterator.hasNext()) {
+      DispositivoProximidade d = iterator.next();
+      if (d.getPosicao().getX() == posicaoX && d.getPosicao().getY() == posicaoY && d.getJogadorDono() == jogador) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public void removerDispositivoProximidade(DispositivoProximidade dispositivo) {
@@ -350,6 +366,23 @@ public class JogoPartida {
               mark = dono.getNome().substring(0, 1).toLowerCase();
             }
             tab[dy][dx] = mark;
+          }
+        }
+      }
+    }
+
+    // Marca a posição de cada míssil lançado no turno atual com a primeira
+    // letra do nome do dono em CAIXA ALTA (prioridade menor que jogador)
+    for (int i = 0; i < misseis.size(); i++) {
+      Missil m = misseis.get(i);
+      if (m != null && m.getPosicao() != null && m.getNum() == this.numTurno - 1) {
+        int mx = m.getPosicao().getX();
+        int my = m.getPosicao().getY();
+        if (mx >= 0 && mx < tamanho && my >= 0 && my < tamanho) {
+          // Não sobrescreve jogadores ou marcadores já existentes
+          if (tab[my][mx].equals(".")) {
+            String mark = "X";
+            tab[my][mx] = mark;
           }
         }
       }

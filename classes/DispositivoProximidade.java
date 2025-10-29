@@ -31,15 +31,7 @@ public class DispositivoProximidade implements IDetector {
     return this.num;
   }
 
-  // Método que recebe um jogador e calcula a distância, se
-  // estiver dentro do alcance determinado retorna true
-  public Boolean detectarJogador(Jogador jogador) {
-    // Não detecta o jogador dono do dispositivo
-    if (jogador == this.jogadorDono) {
-      return false;
-    }
-
-    return this.posicao.distanciaPermitida(jogador.getPosicao().getX(), jogador.getPosicao().getY(), this.alcance,
-        Constants.MODO_ALCANCE_DISPOSITIVO_PROXIMIDADE);
+  public int getModoAlcance() {
+    return Constants.MODO_ALCANCE_DISPOSITIVO_PROXIMIDADE;
   }
 }

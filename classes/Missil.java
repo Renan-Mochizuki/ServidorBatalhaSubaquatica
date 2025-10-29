@@ -29,13 +29,7 @@ public class Missil implements IDetector {
     return this.num;
   }
 
-  public Boolean detectarJogador(Jogador jogador) {
-    // Não detecta o jogador dono do missil
-    if (jogador == this.jogadorDono) {
-      return false;
-    }
-
-    return this.posicao.distanciaPermitida(jogador.getPosicao().getX(), jogador.getPosicao().getY(), this.alcance,
-        Constants.MODO_ALCANCE_ATAQUE);
+  public int getModoAlcance() {
+    return Constants.MODO_ALCANCE_ATAQUE;
   }
 }

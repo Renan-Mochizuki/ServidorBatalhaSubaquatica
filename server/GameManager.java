@@ -150,7 +150,6 @@ public class GameManager {
     }
 
     System.out.println("Partida reservada: " + novaPartida.getId());
-    novaPartida.imprimirPartida();
 
     // Devemos notificar os clientes dessa partida que a partida iniciou
     notificarJogadoresPartida(novaPartida, "Partida reservada", novaPartida.getId() + "");
@@ -245,6 +244,7 @@ public class GameManager {
   // Método que seta o estado da partida como finalizada e remove da lista de
   // partidas em andamento
   public void finalizarJogoPartida(JogoPartida jogoPartida) {
+    jogoPartida.imprimirPartida();
     System.out.println("Partida finalizada: " + jogoPartida.getId());
     // Atualiza estado dos jogadores e finaliza a partida protegendo o estado da
     // partida

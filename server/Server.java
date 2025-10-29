@@ -119,7 +119,8 @@ public class Server {
                 try {
                   idPartida = Integer.parseInt(idPartidaStr);
                 } catch (NumberFormatException e) {
-                  outToClient.writeBytes("0|ID da partida invalido|\n");
+                  // Já validamos o cliente: usa canal sincronizado do Cliente
+                  cliente.enviarLinha("0|ID da partida invalido|");
                   break;
                 }
 
@@ -143,7 +144,8 @@ public class Server {
 
                 Cliente clienteDesafiado = listaCliente.get(nomeDesafiado);
                 if (clienteDesafiado == null) {
-                  outToClient.writeBytes("0|Cliente desafiado nao encontrado|\n");
+                  // Responde via cliente desafiante (já validado)
+                  clienteDesafiante.enviarLinha("0|Cliente desafiado nao encontrado|");
                   break;
                 }
 
@@ -167,7 +169,8 @@ public class Server {
 
                 Cliente clienteDesafiante = listaCliente.get(nomeDesafiante);
                 if (clienteDesafiante == null) {
-                  outToClient.writeBytes("0|Cliente desafiante nao encontrado|\n");
+                  // Responde via cliente desafiado (já validado)
+                  clienteDesafiado.enviarLinha("0|Cliente desafiante nao encontrado|");
                   break;
                 }
 
@@ -191,7 +194,8 @@ public class Server {
 
                 Cliente clienteDesafiante = listaCliente.get(nomeDesafiante);
                 if (clienteDesafiante == null) {
-                  outToClient.writeBytes("0|Cliente desafiante nao encontrado|\n");
+                  // Responde via cliente desafiado (já validado)
+                  clienteDesafiado.enviarLinha("0|Cliente desafiante nao encontrado|");
                   break;
                 }
 
@@ -412,10 +416,11 @@ public class Server {
                 if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
                   break;
 
-                System.out.println("Removendo cliente: " + nomeCliente + " com token: " + tokenCliente);
+                System.out.println("Removendo cliente: " + nomeCliente);
 
                 listaCliente.remove(nomeCliente);
-                outToClient.writeBytes("1|Cliente desconectado com sucesso|\n");
+                // Responde sincronizado via Cliente para evitar interleaving com notificações
+                cliente.enviarLinha("1|Cliente desconectado com sucesso|");
 
                 // Sai do loop para fechar o socket
                 sair = true;
@@ -446,8 +451,10 @@ public class Server {
   public static void inicializarTradutor() {
     tradutor.put("CADASTRO", "CADASTRAR");
     tradutor.put("DESAFIO", "DESAFIAR");
+    tradutor.put("PRONTO", "PRONTOPARTIDA");
     tradutor.put("MOVIMENTO", "MOVER");
     tradutor.put("ATAQUE", "ATACAR");
+    tradutor.put("MISSIL", "ATACAR");
     tradutor.put("DISPOSITIVOPROXIMIDADE", "SONAR");
     tradutor.put("PULAR", "PASSAR");
     tradutor.put("REGISTER", "CADASTRAR");
