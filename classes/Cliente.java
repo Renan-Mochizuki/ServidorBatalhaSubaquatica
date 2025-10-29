@@ -1,6 +1,7 @@
 package classes;
 
-import java.net.Socket;
+import java.io.*;
+import java.net.*;
 
 public class Cliente {
   private String nome;
@@ -52,5 +53,29 @@ public class Cliente {
   // Esse método vai ser <default> para ser acessado pela classe filha (Jogador)
   String getToken() {
     return this.token;
+  }
+
+  // Enviar uma linha para o cliente de maneira mais segura
+  // Código gerado pelo Copilot ao pedir por um método único de envio de mensagem ao cliente
+  public boolean enviarLinha(String linha) {
+    synchronized (this) {
+      Socket socket = this.connectionSocket;
+      if (socket == null || socket.isClosed() || socket.isOutputShutdown()) {
+        return false;
+      }
+      try {
+        DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+        out.writeBytes(linha + "\n");
+        out.flush();
+        return true;
+      } catch (IOException e) {
+        System.err.println("Erro ao enviar para o cliente " + this.nome + ": " + e.getMessage());
+        try {
+          socket.close();
+        } catch (IOException ignored) {
+        }
+        return false;
+      }
+    }
   }
 }

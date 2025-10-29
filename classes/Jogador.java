@@ -90,4 +90,12 @@ public class Jogador extends Cliente {
     }
     return false;
   }
+
+  public int traduzirPosicaoX(int deslocamentoX) {
+    return this.posicao.getX() + deslocamentoX;
+  }
+
+  public int traduzirPosicaoY(int deslocamentoY) {
+    return this.posicao.getY() - deslocamentoY;
+  }
 }
