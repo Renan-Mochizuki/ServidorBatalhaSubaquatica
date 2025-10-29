@@ -3,11 +3,31 @@ package classes;
 import java.util.HashMap;
 import java.util.Map;
 
+// -- TODAS ROTAS --
+// CADASTRAR <nomeCliente>
+// LISTARPARTIDAS
+// LISTARJOGADORES
+// ENTRARPARTIDA <nome> <token> <idPartida>
+// DESAFIAR <nomeDesafiante> <token> <nomeDesafiado>
+// ACEITARDESAFIO <nomeDesafiado> <token> <nomeDesafiante>
+// RECUSARDESAFIO <nomeDesafiado> <token> <nomeDesafiante>
+// CHATGLOBAL <nome> <token> <mensagem>
+// CHATPARTIDA <nome> <token> <mensagem>
+// CHATJOGADOR <nome> <token> <nomeDestinatario> <mensagem>
+// PRONTOPARTIDA <nome> <token>
+// MOVER <nome> <token> <posicaoX> <posicaoY> <modoDeslocamento>
+// ATACAR <nome> <token> <posicaoX> <posicaoY> <modoDeslocamento>
+// SONAR <nome> <token> <posicaoX> <posicaoY> <modoDeslocamento>
+// PASSAR <nome> <token>
+// SAIRPARTIDA <nome> <token>
+// SAIR <nome> <token>
+// KEEPALIVE <nome> <token>
+
 // HashMap apenas para permitir ao cliente enviar comandos com textos diferentes
 public class Tradutor {
   Map<String, String> tradutor;
-  
-  public Tradutor(){
+
+  public Tradutor() {
     tradutor = new HashMap<String, String>();
     tradutor.put("CADASTRO", "CADASTRAR");
     tradutor.put("DESAFIO", "DESAFIAR");

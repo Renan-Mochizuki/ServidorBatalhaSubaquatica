@@ -36,7 +36,7 @@ public class Partida {
   }
 
   public String getInfo() {
-    return "id:" + this.id + ",andamento:" + this.andamento + ",numjogadores:" + this.clientes.size();
+    return "id:" + this.id + Constants.SEPARADORATRIBUTO + "andamento:" + this.andamento + Constants.SEPARADORATRIBUTO + "numjogadores:" + this.clientes.size();
   }
 
   public boolean partidaLotada() {

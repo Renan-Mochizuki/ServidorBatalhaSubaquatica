@@ -10,7 +10,8 @@ public class Constants {
   public static final int NUMERO_PARTIDAS = 5;
   public static final int TEMPO_TURNO = 15; // em segundos
   public static final boolean KEEPALIVE = true; // Ativa ou desativa o keepalive
-  public static final int TEMPO_KEEPALIVE = 120; // em segundos
+  // Quanto até um cliente ser desconectado pelo servidor
+  public static final int TEMPO_KEEPALIVE = 360; // em segundos
   // Proximidade inicial dos jogadores no ínicio da partida (gerado aleatoriamente
   // mas seguindo essa restrição)
   public static final int PROXIMIDADE_INICIAL_JOGADORES = 7;
@@ -31,8 +32,11 @@ public class Constants {
   public static final int DISTANCIA_DISPOSITIVO_PROXIMIDADE = 1;
   public static final int ALCANCE_ATAQUE = 2;
   public static final int ALCANCE_DISPOSITIVO_PROXIMIDADE = 3;
-  public static final String SEPARADOR = " ";
-  public static final String SEPARADORCLIENTE = " "; // "\\|";
+  public static final boolean IMPRIMIRPARTIDA = true;
+  public static final String SEPARADOR = "|";
+  public static final String SEPARADORCLIENTE = " "; // "\\|"
+  public static final String SEPARADORATRIBUTO = ",";
+  public static final String SEPARADORITEM = ";"; // Separa itens em listas enviadas ao cliente
   // Nome das mensagens enviadas pelo servidor (resposta direta do cliente)
   public static final String TIPOCADASTRAR = "CADASTRAR";
   public static final String TIPOLISTARPARTIDAS = "LISTARPARTIDAS";
@@ -63,5 +67,4 @@ public class Constants {
   public static final String TIPOFIMPARTIDA = "FIMPARTIDA";
   public static final String TIPOTURNO = "TURNO";
   public static final String TIPOTURNOEXPIROU = "TURNO";
-  public static final String TIPOTODOSPRONTOS = "TODOSPRONTOS";
 }

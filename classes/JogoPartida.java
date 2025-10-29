@@ -317,6 +317,10 @@ public class JogoPartida {
   // Método gerado pelo Agente Copilot no VSCode ao pedir para fazer um método que
   // imprima o tabuleiro da partida
   public void imprimirPartida() {
+    if (!Constants.IMPRIMIRPARTIDA) {
+      return;
+    }
+
     int tamanho = Constants.TAMANHO_TABULEIRO;
 
     // Inicializa o tabuleiro com '.'

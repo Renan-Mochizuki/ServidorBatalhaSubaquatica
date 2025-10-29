@@ -31,7 +31,7 @@ public class Server {
         DataOutputStream outToClient)
         throws IOException {
       if (splitedSentence.length < indice + 1 || splitedSentence[indice].isEmpty()) {
-        enviarLinha(outToClient, tipo, "400", nomeCampo + " nao informado", nomeCampo);
+        enviarLinha(outToClient, tipo, "400", nomeCampo + " nao informado", "campo:" + nomeCampo);
         return false;
       }
       return true;
@@ -43,11 +43,11 @@ public class Server {
         throws IOException {
       DataOutputStream outToClient = new DataOutputStream(connectionSocket.getOutputStream());
       if (cliente == null) {
-        enviarLinha(outToClient, tipo, "404", "Cliente nao encontrado", "");
+        enviarLinha(outToClient, tipo, "404", "Cliente nao encontrado", "campo:nomeCliente");
         return false;
       }
       if (!cliente.validarToken(tokenCliente)) {
-        enviarLinha(outToClient, tipo, "401", "Token invalido", "");
+        enviarLinha(outToClient, tipo, "401", "Token invalido", "campo:tokenCliente");
         return false;
       }
 
@@ -87,11 +87,9 @@ public class Server {
           // Separando a sentença nas palavras
           String splitedSentence[] = sentence.split(Constants.SEPARADORCLIENTE);
           String comandoEnviado = splitedSentence[0].toUpperCase();
-          System.out.println("Comando recebido: " + comandoEnviado);
           if (tradutor.containsKey(comandoEnviado)) {
             comandoEnviado = tradutor.get(comandoEnviado);
           }
-          System.out.println("Comando recebido: " + comandoEnviado);
           // Switch para os comandos enviados pelo cliente
           switch (comandoEnviado) {
             // CADASTRAR <nomeCliente>
@@ -139,7 +137,7 @@ public class Server {
               try {
                 idPartida = Integer.parseInt(idPartidaStr);
               } catch (NumberFormatException e) {
-                cliente.enviarLinha("LISTARPARTIDAS", "400", "ID da partida invalido", "idPartida");
+                cliente.enviarLinha("LISTARPARTIDAS", "400", "id da partida invalido", "campo:idPartida");
                 break;
               }
 
@@ -164,8 +162,8 @@ public class Server {
 
               Cliente clienteDesafiado = listaCliente.get(nomeDesafiado);
               if (clienteDesafiado == null) {
-                // Responde via cliente desafiante (já validado)
-                clienteDesafiante.enviarLinha("DESAFIAR", "404", "Cliente desafiado nao encontrado", "nomeDesafiado");
+                clienteDesafiante.enviarLinha("DESAFIAR", "404", "Cliente desafiado nao encontrado",
+                    "campo:nomeDesafiado");
                 break;
               }
 
@@ -191,7 +189,7 @@ public class Server {
               Cliente clienteDesafiante = listaCliente.get(nomeDesafiante);
               if (clienteDesafiante == null) {
                 clienteDesafiado.enviarLinha("ACEITARDESAFIO", "404", "Cliente desafiante nao encontrado",
-                    "nomeDesafiante");
+                    "campo:nomeDesafiante");
                 break;
               }
 
@@ -217,7 +215,7 @@ public class Server {
               Cliente clienteDesafiante = listaCliente.get(nomeDesafiante);
               if (clienteDesafiante == null) {
                 clienteDesafiado.enviarLinha("RECUSARDESAFIO", "404", "Cliente desafiante nao encontrado",
-                    "nomeDesafiante");
+                    "campo:nomeDesafiante");
                 break;
               }
 
