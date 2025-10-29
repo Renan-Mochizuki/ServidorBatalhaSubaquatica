@@ -54,6 +54,17 @@ public class Server {
       // O token está correto, vamos setar o socket de conexão, para caso ele tiver se
       // desconectado e reconectado
       cliente.setConnectionSocket(connectionSocket);
+
+      // Se o jogador estiver em uma partida vamos atualizar o socket do seu objeto
+      // jogador também
+      JogoPartida jogoPartida = gameManager.encontrarPartidaAndamento(cliente.getIdPartida());
+      if (jogoPartida != null) {
+        Jogador jogador = jogoPartida.buscarJogadorPorNome(cliente.getNome());
+        if (jogador != null) {
+          jogador.setConnectionSocket(connectionSocket);
+        }
+      }
+
       // Renova o keepalive para qualquer ação validada
       gameManager.keepAliveCliente(cliente, Constants.TIPOKEEPALIVE);
       return true;

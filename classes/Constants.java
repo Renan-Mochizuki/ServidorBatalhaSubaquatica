@@ -10,16 +10,20 @@ public class Constants {
   public static final int NUMERO_PARTIDAS = 5;
   public static final int TEMPO_TURNO = 15; // em segundos
   public static final boolean KEEPALIVE = true; // Ativa ou desativa o keepalive
+
   // Quanto até um cliente ser desconectado pelo servidor
   public static final int TEMPO_KEEPALIVE = 360; // em segundos
+
   // Proximidade inicial dos jogadores no ínicio da partida (gerado aleatoriamente
   // mas seguindo essa restrição)
   public static final int PROXIMIDADE_INICIAL_JOGADORES = 7;
+
   // Se verdadeiro, jogadores em partidas em andamento não receberam mensagens
   // globais
   public static final boolean CHAT_GLOBAL_SOMENTE_LOBBY = true;
-  // Modo: 0 para calculo de distância em formato quadrado, 1 para formato de
-  // losango
+
+  // Modo de cálculo de distância:
+  // 0 para formato de quadrado, 1 para formato de losango
   // Distância diz respeito a distância máxima permitida para o jogador realizar a
   // ação e Alcance diz respeito ao alcance máximo de um ataque ou dispositivo
   public static final int MODO_DISTANCIA_MOVIMENTO = 1;
