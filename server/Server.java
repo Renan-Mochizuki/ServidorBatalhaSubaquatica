@@ -52,6 +52,8 @@ public class Server {
       // O token está correto, vamos setar o socket de conexão, para caso ele tiver se
       // desconectado e reconectado
       cliente.setConnectionSocket(connectionSocket);
+      // Renova o keepalive para qualquer ação validada
+      gameManager.keepAliveCliente(cliente);
       return true;
     }
 
@@ -434,6 +436,23 @@ public class Server {
                 sair = true;
                 break;
               }
+              // KEEPALIVE <nome> <token>
+              case "KEEPALIVE": {
+                if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
+                    !verificarCampo("token", 2, splitedSentence, outToClient))
+                  break;
+
+                String nomeCliente = splitedSentence[1];
+                String tokenCliente = splitedSentence[2];
+
+                Cliente cliente = listaCliente.get(nomeCliente);
+
+                if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+                  break;
+
+                gameManager.keepAliveCliente(cliente);
+                break;
+              }
               default: {
                 enviarLinha(outToClient, "0|Comando desconhecido|");
                 break;
@@ -441,13 +460,15 @@ public class Server {
             }
           }
         }
+      } catch (IOException e) {
+        // Ignora
       } catch (Exception e) {
         e.printStackTrace();
       } finally {
         try {
           connectionSocket.close();
         } catch (IOException e) {
-          e.printStackTrace();
+          // Ignora
         }
       }
     }
@@ -464,6 +485,7 @@ public class Server {
     tradutor.put("MISSIL", "ATACAR");
     tradutor.put("DISPOSITIVOPROXIMIDADE", "SONAR");
     tradutor.put("PULAR", "PASSAR");
+    tradutor.put("PING", "KEEPALIVE");
     tradutor.put("REGISTER", "CADASTRAR");
     tradutor.put("LISTGAMES", "LISTARPARTIDAS");
     tradutor.put("LISTPLAYERS", "LISTARJOGADORES");

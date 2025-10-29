@@ -14,6 +14,9 @@ public class GameManager {
   // fazia um turno de 15 segundos
   private final ScheduledExecutorService turnScheduler = Executors.newScheduledThreadPool(4);
   private final ConcurrentMap<Integer, ScheduledFuture<?>> turnTimers = new ConcurrentHashMap<>();
+  // Keepalive por cliente
+  private final ScheduledExecutorService keepAliveScheduler = Executors.newScheduledThreadPool(2);
+  private final ConcurrentMap<String, ScheduledFuture<?>> keepAliveTimers = new ConcurrentHashMap<>();
 
   // Lista para armazenar os clientes conectados
   // Usando um HashMap para facilitar o acesso por nome ou ID
@@ -277,6 +280,18 @@ public class GameManager {
     jogoPartidas.remove(jogoPartida);
   }
 
+  // Método para enviar uma linha para o cliente evitando erros de conexão
+  private void enviarLinha(DataOutputStream outToClient, String linha) {
+    if (outToClient == null)
+      return;
+    try {
+      outToClient.writeBytes(linha + "\n");
+      outToClient.flush();
+    } catch (IOException e) {
+      // Iremos ignorar, cliente pode ter fechado a conexão
+    }
+  }
+
   //
   // MÉTODOS PARA AÇÕES DOS CLIENTES
   //
@@ -300,6 +315,8 @@ public class GameManager {
       novoCliente.enviarLinha("0|Um cliente com esse nome ja existe|");
     } else {
       novoCliente.enviarLinha("1|Cadastrado com sucesso|" + tokenCliente);
+      // Inicia keepalive do cliente
+      keepAliveCliente(novoCliente);
     }
   }
 
@@ -447,7 +464,7 @@ public class GameManager {
     aceitarDesafio(clienteDesafiado, clienteDesafiante);
   }
 
-  public void aceitarDesafio(Cliente clienteDesafiado, Cliente clienteDesafiante) {
+  private void aceitarDesafio(Cliente clienteDesafiado, Cliente clienteDesafiante) {
     // Criando a lista de clientes para a nova partida
     List<Cliente> clientes = new ArrayList<>();
     clientes.add(clienteDesafiado);
@@ -646,6 +663,64 @@ public class GameManager {
     }
   }
 
+  private void sairPartida(Cliente cliente, Boolean enviarNotificacao) {
+    String nomeCliente = cliente.getNome();
+    cliente.setJogadorDesafiado(null);
+
+    // Caso o cliente esteja em uma partida em andamento
+    JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
+    if (partidaAndamento != null) {
+      synchronized (partidaAndamento) {
+        String turno = partidaAndamento.getJogadorTurno();
+        partidaAndamento.removerJogador(partidaAndamento.buscarJogadorPorNome(nomeCliente));
+        if (turno.equals(nomeCliente)) {
+          proximoTurnoPartida(partidaAndamento);
+        }
+        cliente.setIdPartida(-1);
+        if (enviarNotificacao)
+          cliente.enviarLinha("1|Saiu da partida|");
+      }
+      return;
+    }
+
+    // Não está em uma partida em andamento, pega a partida do cliente
+    Partida partida = encontrarPartida(cliente.getIdPartida());
+
+    if (partida != null) {
+      partida.removerCliente(cliente);
+      cliente.setIdPartida(-1);
+      if (enviarNotificacao)
+        cliente.enviarLinha("1|Saiu da partida|");
+    } else if (enviarNotificacao) {
+      cliente.enviarLinha("0|Partida inexistente|");
+    }
+  }
+
+  public void sairPartidaCliente(Cliente cliente) {
+    sairPartida(cliente, true);
+  }
+
+  public void sairCliente(Cliente cliente) {
+    String nomeCliente = cliente.getNome();
+    System.out.println("Cliente desconectado: " + nomeCliente);
+
+    sairPartida(cliente, false);
+
+    // Remove o cliente da lista de clientes
+    listaCliente.remove(nomeCliente);
+    // Cancela o keepalive deste cliente
+    cancelarKeepAlive(cliente);
+    cliente.enviarLinha("1|Cliente desconectado|");
+
+    // Fecha o socket deste cliente
+    try {
+      Socket connectionSocket = cliente.getConnectionSocket();
+      connectionSocket.close();
+    } catch (IOException e) {
+      // ignora
+    }
+  }
+
   // Método criado pelo Agente Copilot do VSCode ao pedir como se
   // fazia um turno de 15 segundos
   // Agenda (ou reinicia) o timer de 15s para o turno atual da partida
@@ -688,58 +763,41 @@ public class GameManager {
     }
   }
 
-  public void sairPartidaCliente(Cliente cliente) {
-    String nomeCliente = cliente.getNome();
-    cliente.setJogadorDesafiado(null);
-
-    // Caso o cliente esteja em uma partida em andamento
-    JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
-    if (partidaAndamento != null) {
-      synchronized (partidaAndamento) {
-        String turno = partidaAndamento.getJogadorTurno();
-        partidaAndamento.removerJogador(partidaAndamento.buscarJogadorPorNome(nomeCliente));
-        if (turno.equals(nomeCliente)) {
-          proximoTurnoPartida(partidaAndamento);
-        }
-        cliente.setIdPartida(-1);
-        cliente.enviarLinha("1|Saiu da partida|");
+  public void keepAliveCliente(Cliente cliente) {
+    if (!Constants.KEEPALIVE)
+      return;
+    if (cliente == null)
+      return;
+    String chave = cliente.getNome();
+    // Cancela agendamento anterior, se houver
+    ScheduledFuture<?> anterior = keepAliveTimers.remove(chave);
+    if (anterior != null) {
+      anterior.cancel(false);
+    }
+    // Agenda novo timeout
+    ScheduledFuture<?> futuro = keepAliveScheduler.schedule(() -> {
+      try {
+        // Tempo esgotado: desconecta o cliente
+        sairCliente(cliente);
+      } catch (Exception e) {
+        e.printStackTrace();
+      } finally {
+        // Remove o handle para evitar vazamento
+        keepAliveTimers.remove(chave);
       }
+    }, Constants.TEMPO_KEEPALIVE, TimeUnit.SECONDS);
+    keepAliveTimers.put(chave, futuro);
+  }
+
+  private void cancelarKeepAlive(Cliente cliente) {
+    if (!Constants.KEEPALIVE)
       return;
-    }
-
-    // Não está em uma partida em andamento, pega a partida do cliente
-    Partida partida = encontrarPartida(cliente.getIdPartida());
-
-    if (partida != null) {
-      partida.removerCliente(cliente);
-      cliente.setIdPartida(-1);
-      cliente.enviarLinha("1|Saiu da partida|");
-    } else {
-      cliente.enviarLinha("0|Partida inexistente|");
-    }
-  }
-
-  public void sairCliente(Cliente cliente) {
-    String nomeCliente = cliente.getNome();
-    System.out.println("Cliente desconectado: " + nomeCliente);
-
-    sairPartidaCliente(cliente);
-
-    // Remove o cliente da lista de clientes
-    listaCliente.remove(nomeCliente);
-    cliente.enviarLinha("1|Cliente desconectado com sucesso|");
-  }
-
-  // Método para enviar uma linha para o cliente evitando erros de conexão
-  private void enviarLinha(DataOutputStream outToClient, String linha) {
-    if (outToClient == null)
+    if (cliente == null)
       return;
-    try {
-      outToClient.writeBytes(linha + "\n");
-      outToClient.flush();
-    } catch (IOException e) {
-      // Iremos ignorar, cliente pode ter fechado a conexão
+    String chave = cliente.getNome();
+    ScheduledFuture<?> fut = keepAliveTimers.remove(chave);
+    if (fut != null) {
+      fut.cancel(false);
     }
   }
-
 }
