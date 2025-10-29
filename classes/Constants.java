@@ -32,7 +32,7 @@ public class Constants {
   public static final int DISTANCIA_DISPOSITIVO_PROXIMIDADE = 1;
   public static final int ALCANCE_ATAQUE = 2;
   public static final int ALCANCE_DISPOSITIVO_PROXIMIDADE = 3;
-  public static final boolean IMPRIMIRPARTIDA = true;
+  public static final boolean IMPRIMIRPARTIDA = false;
   public static final String SEPARADOR = "|";
   public static final String SEPARADORCLIENTE = " "; // "\\|"
   public static final String SEPARADORATRIBUTO = ",";
@@ -67,4 +67,5 @@ public class Constants {
   public static final String TIPOFIMPARTIDA = "FIMPARTIDA";
   public static final String TIPOTURNO = "TURNO";
   public static final String TIPOTURNOEXPIROU = "TURNO";
+  public static final String TIPOERRO = "ERRO";
 }

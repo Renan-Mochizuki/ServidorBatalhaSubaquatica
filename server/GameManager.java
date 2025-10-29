@@ -134,7 +134,7 @@ public class GameManager {
         if (!todosJogadoresDetectados.isEmpty()) {
           String valor = "num:" + dispositivo.getNum() + Constants.SEPARADORATRIBUTO + "jogadores:{"
               + todosJogadoresDetectados + "}";
-          notificarJogadorPartida(dispositivo.getJogadorDono(), Constants.TIPODESCONECTADO, "200",
+          notificarJogadorPartida(dispositivo.getJogadorDono(), Constants.TIPODETECTADO, "200",
               "Jogadores detectados pelo dispositivo " + dispositivo.getNum(), valor);
         }
       }
