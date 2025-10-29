@@ -4,9 +4,16 @@ import java.util.*;
 import classes.*;
 import java.io.*;
 import java.net.*;
+import java.util.concurrent.*;
 
 public class GameManager {
   private int idAutoIncrement;
+
+  // Timer de turno por partida
+  // Esses dois foram sugeridos pelo Agente Copilot do VSCode ao pedir como se
+  // fazia um turno de 15 segundos
+  private final ScheduledExecutorService turnScheduler = Executors.newScheduledThreadPool(4);
+  private final ConcurrentMap<Integer, ScheduledFuture<?>> turnTimers = new ConcurrentHashMap<>();
 
   // Lista para armazenar os clientes conectados
   // Usando um HashMap para facilitar o acesso por nome ou ID
@@ -158,6 +165,8 @@ public class GameManager {
   // Método que passa para o próximo turno da partida e determina os
   // acontecimentos da partida para notificar os jogadores
   public void proximoTurnoPartida(JogoPartida jogoPartida) {
+    // Cancela o timer do turno atual (para evitar disparo durante o processamento)
+    cancelarTimerTurno(jogoPartida);
     lidarJogadoresAtaques(jogoPartida);
 
     if (verificarFimJogoPartida(jogoPartida)) {
@@ -180,6 +189,8 @@ public class GameManager {
     }
 
     notificarJogadoresPartida(jogoPartida, "Turno do jogador", jogadorTurno);
+    // Agenda o timer para o novo turno
+    agendarTimerTurno(jogoPartida);
   }
 
   // Método que notifica o dono do dispositivo sobre os jogadores acertados por
@@ -261,6 +272,8 @@ public class GameManager {
       }
       jogoPartida.finalizarPartida();
     }
+    // Cancela e remove o timer dessa partida
+    cancelarTimerTurno(jogoPartida);
     jogoPartidas.remove(jogoPartida);
   }
 
@@ -556,6 +569,8 @@ public class GameManager {
         cliente.enviarLinha("0|Movimento invalido|");
       } else {
         cliente.enviarLinha("1|Movimento realizado com sucesso|");
+        // Evita que o timer dispare durante a troca de turno
+        cancelarTimerTurno(partidaAndamento);
         proximoTurnoPartida(partidaAndamento);
       }
     }
@@ -579,6 +594,7 @@ public class GameManager {
       } else {
         cliente.enviarLinha("1|Ataque realizado com sucesso|");
         // Avança para o próximo turno
+        cancelarTimerTurno(partidaAndamento);
         proximoTurnoPartida(partidaAndamento);
       }
     }
@@ -602,6 +618,7 @@ public class GameManager {
       } else {
         cliente.enviarLinha("1|Sonar utilizado com sucesso|");
         // Avança para o próximo turno
+        cancelarTimerTurno(partidaAndamento);
         proximoTurnoPartida(partidaAndamento);
       }
     }
@@ -623,8 +640,51 @@ public class GameManager {
       } else {
         cliente.enviarLinha("1|Turno passado com sucesso|");
         // Avança para o próximo turno
+        cancelarTimerTurno(partidaAndamento);
         proximoTurnoPartida(partidaAndamento);
       }
+    }
+  }
+
+  // Método criado pelo Agente Copilot do VSCode ao pedir como se
+  // fazia um turno de 15 segundos
+  // Agenda (ou reinicia) o timer de 15s para o turno atual da partida
+  private void agendarTimerTurno(JogoPartida jogoPartida) {
+    int partidaId = jogoPartida.getId();
+    // Cancela o anterior, se houver
+    ScheduledFuture<?> anterior = turnTimers.remove(partidaId);
+    if (anterior != null) {
+      anterior.cancel(false);
+    }
+    final int turnoAgendado = jogoPartida.getNumTurno();
+    ScheduledFuture<?> futuro = turnScheduler.schedule(() -> {
+      try {
+        // Verifica se ainda estamos no mesmo turno
+        synchronized (jogoPartida) {
+          if (jogoPartida.getNumTurno() != turnoAgendado) {
+            return; // já avançou por ação do jogador
+          }
+          String nomeJogadorTurno = jogoPartida.getJogadorTurno();
+          Jogador jogadorTurno = jogoPartida.buscarJogadorPorNome(nomeJogadorTurno);
+          jogadorTurno.enviarLinha("0|Seu turno expirou|" + nomeJogadorTurno);
+        }
+        // Força avanço do turno (equivale a PASSAR)
+        proximoTurnoPartida(jogoPartida);
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
+    }, Constants.TEMPO_TURNO, TimeUnit.SECONDS);
+    turnTimers.put(partidaId, futuro);
+  }
+
+  // Método criado pelo Agente Copilot do VSCode ao pedir como se
+  // fazia um turno de 15 segundos
+  // Cancela o timer do turno da partida, se existir
+  private void cancelarTimerTurno(JogoPartida jogoPartida) {
+    int partidaId = jogoPartida.getId();
+    ScheduledFuture<?> futuro = turnTimers.remove(partidaId);
+    if (futuro != null) {
+      futuro.cancel(false);
     }
   }
 
@@ -659,7 +719,7 @@ public class GameManager {
     }
   }
 
-  // Escrita segura usando DataOutputStream quando não há Cliente associado
+  // Método para enviar uma linha para o cliente evitando erros de conexão
   private void enviarLinha(DataOutputStream outToClient, String linha) {
     if (outToClient == null)
       return;
@@ -667,7 +727,7 @@ public class GameManager {
       outToClient.writeBytes(linha + "\n");
       outToClient.flush();
     } catch (IOException e) {
-      // Ignora: cliente pode ter fechado a conexão
+      // Iremos ignorar, cliente pode ter fechado a conexão
     }
   }
 

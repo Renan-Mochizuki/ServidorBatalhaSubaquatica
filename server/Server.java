@@ -32,7 +32,7 @@ public class Server {
     static Boolean verificarCampo(String nomeCampo, int indice, String[] splitedSentence, DataOutputStream outToClient)
         throws IOException {
       if (splitedSentence.length < indice + 1 || splitedSentence[indice].isEmpty()) {
-        outToClient.writeBytes("0|" + nomeCampo + " nao informado|\n");
+        enviarLinha(outToClient, "0|" + nomeCampo + " nao informado|");
         return false;
       }
       return true;
@@ -43,11 +43,11 @@ public class Server {
     static Boolean validarCliente(Cliente cliente, String tokenCliente, DataOutputStream outToClient,
         Socket connectionSocket) throws IOException {
       if (cliente == null) {
-        outToClient.writeBytes("0|Cliente nao encontrado|\n");
+        enviarLinha(outToClient, "0|Cliente nao encontrado|");
         return false;
       }
       if (!cliente.validarToken(tokenCliente)) {
-        outToClient.writeBytes("0|Token invalido|\n");
+        enviarLinha(outToClient, "0|Token invalido|");
         return false;
       }
 
@@ -55,6 +55,18 @@ public class Server {
       // desconectado e reconectado
       cliente.setConnectionSocket(connectionSocket);
       return true;
+    }
+
+    // Método para enviar uma linha para o cliente evitando erros de conexão
+    static void enviarLinha(DataOutputStream outToClient, String linha) {
+      if (outToClient == null)
+        return;
+      try {
+        outToClient.writeBytes(linha + "\n");
+        outToClient.flush();
+      } catch (IOException e) {
+        // Iremos ignorar, cliente pode ter fechado a conexão
+      }
     }
 
     public void run() {
@@ -426,9 +438,10 @@ public class Server {
                 sair = true;
                 break;
               }
-              default:
-                outToClient.writeBytes("0|Comando desconhecido|\n");
+              default: {
+                enviarLinha(outToClient, "0|Comando desconhecido|");
                 break;
+              }
             }
           }
         }

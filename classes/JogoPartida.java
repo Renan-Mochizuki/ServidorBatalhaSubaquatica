@@ -248,7 +248,7 @@ public class JogoPartida {
     }
 
     // Se já houver um dispositivo do mesmo jogador naquela posição, não permite
-    if(verificarDispositivoProximidadeExistente(jogador, posicaoX, posicaoY)) {
+    if (verificarDispositivoProximidadeExistente(jogador, posicaoX, posicaoY)) {
       return false;
     }
 

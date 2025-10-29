@@ -8,6 +8,7 @@ public class Constants {
   public static final int NUMERO_JOGADORES = 2;
   public static final int NUMERO_MAX_DISPOSITIVOS_JOGADOR = 4;
   public static final int NUMERO_PARTIDAS = 5;
+  public static final int TEMPO_TURNO = 5; // em segundos
   // Proximidade inicial dos jogadores no ínicio da partida (gerado aleatoriamente
   // mas seguindo essa restrição)
   public static final int PROXIMIDADE_INICIAL_JOGADORES = 7;
