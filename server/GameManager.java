@@ -88,14 +88,15 @@ public class GameManager {
 
   // Método que notifica um único jogador de uma partida com uma mensagem e um
   // valor passado
-  public void notificarJogadorPartida(Cliente cliente, String mensagem, String valor) {
+  public void notificarJogadorPartida(Cliente cliente, String tipo, String codigo, String mensagem, String valor) {
     // Usa método centralizado no Cliente para enviar com segurança
-    cliente.enviarLinha("1|" + mensagem + "|" + valor);
+    cliente.enviarLinha(tipo, codigo, mensagem, valor);
   }
 
   // Método que notifica todos os jogadores de uma partida com uma mensagem e um
   // valor passado
-  public void notificarJogadoresPartida(JogoPartida jogoPartida, String mensagem, String valor) {
+  public void notificarJogadoresPartida(JogoPartida jogoPartida, String tipo, String codigo, String mensagem,
+      String valor) {
     List<Jogador> jogadoresSnapshot;
     synchronized (jogoPartida) {
       jogadoresSnapshot = new ArrayList<>(jogoPartida.getTodosJogadores());
@@ -105,7 +106,7 @@ public class GameManager {
     Iterator<Jogador> it = jogadoresSnapshot.iterator();
     while (it.hasNext()) {
       Jogador jogador = it.next();
-      notificarJogadorPartida(jogador, mensagem, valor);
+      notificarJogadorPartida(jogador, tipo, codigo, mensagem, valor);
     }
   }
 
@@ -128,8 +129,8 @@ public class GameManager {
           todosJogadoresDetectados += jogadorDetectado.getNome() + ",";
         }
         if (!todosJogadoresDetectados.isEmpty()) {
-          notificarJogadorPartida(dispositivo.getJogadorDono(),
-              "Jogador detectado pelo dispositivo " + dispositivo.getNum(), todosJogadoresDetectados);
+          notificarJogadorPartida(dispositivo.getJogadorDono(), Constants.TIPODESCONECTADO, "200",
+              "Jogadores detectados pelo dispositivo " + dispositivo.getNum(), todosJogadoresDetectados);
         }
       }
     }
@@ -161,8 +162,9 @@ public class GameManager {
 
     System.out.println("Partida reservada: " + novaPartida.getId());
 
-    // Devemos notificar os clientes dessa partida que a partida iniciou
-    notificarJogadoresPartida(novaPartida, "Partida reservada", novaPartida.getId() + "");
+    // Devemos notificar os clientes dessa partida que a partida foi reservada
+    notificarJogadoresPartida(novaPartida, Constants.TIPORESERVADOPARTIDA, "200", "Partida reservada",
+        novaPartida.getId() + "");
   }
 
   // Método que passa para o próximo turno da partida e determina os
@@ -191,7 +193,7 @@ public class GameManager {
       jogadorTurno = jogoPartida.proximoTurno();
     }
 
-    notificarJogadoresPartida(jogoPartida, "Turno do jogador", jogadorTurno);
+    notificarJogadoresPartida(jogoPartida, Constants.TIPOTURNO, "200", "Turno do jogador", jogadorTurno);
     // Agenda o timer para o novo turno
     agendarTimerTurno(jogoPartida);
   }
@@ -227,14 +229,14 @@ public class GameManager {
           todosJogadoresAcertados += jogadorDetectado.getNome() + ",";
         }
         if (!todosJogadoresAcertados.isEmpty()) {
-          notificarJogadorPartida(missil.getJogadorDono(),
-              "Jogador acertados pelo missil", todosJogadoresAcertados);
+          notificarJogadorPartida(missil.getJogadorDono(), Constants.TIPOACERTO, "200",
+              "Jogadores acertados pelo missil", todosJogadoresAcertados);
           // Iterando sobre os jogadores acertados para matá-los
           Iterator<Jogador> itJogadoresAcertados = jogadoresDetectados.iterator();
           while (itJogadoresAcertados.hasNext()) {
             Jogador jogadorAcertado = itJogadoresAcertados.next();
             jogoPartida.matarJogador(jogadorAcertado);
-            notificarJogadorPartida(jogadorAcertado,
+            notificarJogadorPartida(jogadorAcertado, Constants.TIPOMORTE, "200",
                 "Você foi acertado por um missil", missil.getJogadorDono().getNome());
           }
         }
@@ -247,8 +249,8 @@ public class GameManager {
   public boolean verificarFimJogoPartida(JogoPartida jogoPartida) {
     Jogador vencedor = jogoPartida.verificarFimPartida();
     if (vencedor != null) {
-      notificarJogadorPartida(vencedor, "Voce e o vencedor!", "");
-      notificarJogadoresPartida(jogoPartida, "Partida finalizada", vencedor.getNome());
+      notificarJogadorPartida(vencedor, Constants.TIPOVITORIA, "200", "Você é o vencedor!", "");
+      notificarJogadoresPartida(jogoPartida, Constants.TIPOFIMPARTIDA, "200", "Partida finalizada", vencedor.getNome());
       finalizarJogoPartida(jogoPartida);
       return true;
     }
@@ -281,10 +283,12 @@ public class GameManager {
   }
 
   // Método para enviar uma linha para o cliente evitando erros de conexão
-  private void enviarLinha(DataOutputStream outToClient, String linha) {
+  private void enviarLinha(DataOutputStream outToClient, String tipo, String codigo, String mensagem, String valor) {
     if (outToClient == null)
       return;
     try {
+      String spr = Constants.SEPARADOR;
+      String linha = tipo + spr + codigo + spr + mensagem + spr + valor;
       outToClient.writeBytes(linha + "\n");
       outToClient.flush();
     } catch (IOException e) {
@@ -296,7 +300,21 @@ public class GameManager {
   // MÉTODOS PARA AÇÕES DOS CLIENTES
   //
 
-  public void cadastrarCliente(Map<String, Cliente> listaCliente, String nomeCliente, Socket connectionSocket) {
+  public void cadastrarCliente(Map<String, Cliente> listaCliente, String nomeCliente, Socket connectionSocket,
+      String tipo) {
+    try {
+      if (nomeCliente.contains(Constants.SEPARADORCLIENTE) || nomeCliente.contains(Constants.SEPARADOR)
+          || nomeCliente.contains(" ")) {
+        DataOutputStream outToClient = new DataOutputStream(connectionSocket.getOutputStream());
+        enviarLinha(outToClient, tipo, "400", "Nome de cliente nao pode conter '" + Constants.SEPARADORCLIENTE
+            + "' ou '" + Constants.SEPARADOR + "' ou espacos em branco", "nomeCliente");
+        return;
+      }
+    } catch (IOException e) {
+      // Iremos ignorar
+
+    }
+
     // Criando um token para o cliente, o cliente receberá esse token e deve
     // utilizá-lo para garantir sua identidade, poderíamos gerar um hash a partir do
     // nome e um salt mas um randomUUID já garante a unicidade necessária
@@ -311,16 +329,16 @@ public class GameManager {
     if (listaCliente.putIfAbsent(nomeCliente, novoCliente) != null) {
       // Usa o cliente recém-criado (não persistido) apenas para responder nesta
       // conexão
-      System.out.println("Cadastrando cliente: " + nomeCliente + " com token: " + tokenCliente);
-      novoCliente.enviarLinha("0|Um cliente com esse nome ja existe|");
+      novoCliente.enviarLinha(tipo, "409", "Um cliente com esse nome ja existe", "");
     } else {
-      novoCliente.enviarLinha("1|Cadastrado com sucesso|" + tokenCliente);
+      System.out.println("Cadastrando cliente: " + nomeCliente + " com token: " + tokenCliente);
+      novoCliente.enviarLinha(tipo, "201", "Cadastrado com sucesso", tokenCliente);
       // Inicia keepalive do cliente
-      keepAliveCliente(novoCliente);
+      keepAliveCliente(novoCliente, tipo);
     }
   }
 
-  public void listarPartidasCliente(DataOutputStream outToClient) {
+  public void listarPartidasCliente(DataOutputStream outToClient, String tipo) {
     StringBuilder partidasServidor = new StringBuilder();
 
     synchronized (partidas) {
@@ -331,10 +349,10 @@ public class GameManager {
       }
     }
 
-    enviarLinha(outToClient, "1|Partidas públicas|" + partidasServidor);
+    enviarLinha(outToClient, tipo, "200", "Partidas públicas", partidasServidor.toString());
   }
 
-  public void listarJogadoresCliente(DataOutputStream outToClient) {
+  public void listarJogadoresCliente(DataOutputStream outToClient, String tipo) {
     StringBuilder jogadoresServidor = new StringBuilder();
 
     synchronized (listaCliente) {
@@ -345,23 +363,23 @@ public class GameManager {
       }
     }
 
-    enviarLinha(outToClient, "1|Jogadores conectados|" + jogadoresServidor);
+    enviarLinha(outToClient, tipo, "200", "Jogadores conectados", jogadoresServidor.toString());
   }
 
-  public void entrarPartidaCliente(Cliente cliente, int idPartida) {
+  public void entrarPartidaCliente(Cliente cliente, int idPartida, String tipo) {
     String nomeCliente = cliente.getNome();
     // Percorre todas partidas e verifica se o id
     Partida partidaEscolhida = encontrarPartida(idPartida);
 
     // Partida não encontrada
     if (partidaEscolhida == null) {
-      cliente.enviarLinha("0|Partida inexistente|");
+      cliente.enviarLinha(tipo, "404", "Partida inexistente", "");
       return;
     }
 
     // Se a partida estiver lotada, não pode entrar
     if (partidaEscolhida.partidaLotada() == true) {
-      cliente.enviarLinha("0|Partida lotada|");
+      cliente.enviarLinha(tipo, "403", "Partida lotada", "");
       return;
     }
 
@@ -370,7 +388,7 @@ public class GameManager {
 
     // Se o cliente já está na partida escolhida, não faz nada
     if (idPartidaCliente == idPartida) {
-      cliente.enviarLinha("1|Cliente ja esta nessa partida|");
+      cliente.enviarLinha(tipo, "204", "Ja esta nessa partida", "");
       return;
     }
 
@@ -378,7 +396,7 @@ public class GameManager {
     if (idPartidaCliente != -1) {
       JogoPartida partidaAndamento = encontrarPartidaAndamento(idPartidaCliente);
       if (partidaAndamento != null) {
-        cliente.enviarLinha("0|Nao e possivel trocar de partida durante um jogo|");
+        cliente.enviarLinha(tipo, "403", "Nao e possivel sair de uma partida em andamento", "");
         return;
       }
       Partida partidaAnterior = encontrarPartida(idPartidaCliente);
@@ -395,13 +413,13 @@ public class GameManager {
 
     System.out.println("Cliente " + nomeCliente + " entrou na partida " + idPartida);
 
-    cliente.enviarLinha("1|Entrou na partida com sucesso|");
+    cliente.enviarLinha(tipo, "200", "Entrou na partida com sucesso", "");
 
     // Tenta iniciar a partida
     tentarIniciarPartida(partidaEscolhida);
   }
 
-  public void desafiarCliente(Cliente clienteDesafiante, Cliente clienteDesafiado) {
+  public void desafiarCliente(Cliente clienteDesafiante, Cliente clienteDesafiado, String tipo) {
     String nomeDesafiante = clienteDesafiante.getNome();
     String nomeDesafiado = clienteDesafiado.getNome();
 
@@ -409,7 +427,7 @@ public class GameManager {
     int idPartidaDesafiante = clienteDesafiante.getIdPartida();
     JogoPartida partidaAndamento = encontrarPartidaAndamento(idPartidaDesafiante);
     if (partidaAndamento != null) {
-      clienteDesafiante.enviarLinha("0|Nao e possivel desafiar durante uma partida em andamento|");
+      clienteDesafiante.enviarLinha(tipo, "403", "Nao e possivel desafiar durante uma partida em andamento", "");
       return;
     }
 
@@ -417,31 +435,31 @@ public class GameManager {
     int idPartidaDesafiado = clienteDesafiado.getIdPartida();
     partidaAndamento = encontrarPartidaAndamento(idPartidaDesafiado);
     if (partidaAndamento != null) {
-      clienteDesafiante.enviarLinha("0|O jogador desafiado esta em uma partida em andamento|");
+      clienteDesafiante.enviarLinha(tipo, "403", "O jogador desafiado esta em uma partida em andamento", "");
       return;
     }
 
     // Se o destinatario não desafiou o remetente, então vamos apenas enviar o nosso
     // desafio para ele
     if (!nomeDesafiante.equals(clienteDesafiado.getJogadorDesafiado())) {
-      notificarJogadorPartida(clienteDesafiado, "Desafio recebido", nomeDesafiante);
+      notificarJogadorPartida(clienteDesafiado, tipo, "200", "Desafio recebido", nomeDesafiante);
 
       clienteDesafiante.setJogadorDesafiado(nomeDesafiado);
 
-      clienteDesafiante.enviarLinha("1|Desafio enviado com sucesso|");
+      clienteDesafiante.enviarLinha(tipo, "201", "Desafio enviado com sucesso", "");
       return;
     }
 
     // Os dois jogadores se desafiaram, vamos iniciar a partida diretamente
-    aceitarDesafio(clienteDesafiante, clienteDesafiado);
+    aceitarDesafio(clienteDesafiante, clienteDesafiado, tipo);
   }
 
-  public void aceitarDesafioCliente(Cliente clienteDesafiado, Cliente clienteDesafiante) {
+  public void aceitarDesafioCliente(Cliente clienteDesafiado, Cliente clienteDesafiante, String tipo) {
     String nomeDesafiante = clienteDesafiado.getNome();
 
     // Se o destinatario não desafiou o remetente, então não há desafio para aceitar
     if (!nomeDesafiante.equals(clienteDesafiante.getJogadorDesafiado())) {
-      clienteDesafiado.enviarLinha("0|Nao ha desafio desse jogador|");
+      clienteDesafiado.enviarLinha(tipo, "404", "Nao ha desafio desse jogador", "");
       return;
     }
 
@@ -449,22 +467,23 @@ public class GameManager {
     int idPartidaDesafiante = clienteDesafiado.getIdPartida();
     JogoPartida partidaAndamento = encontrarPartidaAndamento(idPartidaDesafiante);
     if (partidaAndamento != null) {
-      clienteDesafiado.enviarLinha("0|Nao e possivel aceitar desafio durante uma partida em andamento|");
+      clienteDesafiado.enviarLinha(tipo, "403", "Nao e possivel aceitar desafio durante uma partida em andamento", "");
       return;
     }
     // Verifica se o desafiado está em uma partida em andamento
     int idPartidaDesafiado = clienteDesafiante.getIdPartida();
     partidaAndamento = encontrarPartidaAndamento(idPartidaDesafiado);
     if (partidaAndamento != null) {
-      clienteDesafiado.enviarLinha("0|Nao e possivel aceitar desafio de um jogador em partida em andamento|");
+      clienteDesafiado.enviarLinha(tipo, "403", "Nao e possivel aceitar desafio de um jogador em partida em andamento",
+          "");
       return;
     }
 
     // Os dois jogadores se desafiaram, vamos iniciar a partida diretamente
-    aceitarDesafio(clienteDesafiado, clienteDesafiante);
+    aceitarDesafio(clienteDesafiado, clienteDesafiante, tipo);
   }
 
-  private void aceitarDesafio(Cliente clienteDesafiado, Cliente clienteDesafiante) {
+  private void aceitarDesafio(Cliente clienteDesafiado, Cliente clienteDesafiante, String tipo) {
     // Criando a lista de clientes para a nova partida
     List<Cliente> clientes = new ArrayList<>();
     clientes.add(clienteDesafiado);
@@ -480,12 +499,12 @@ public class GameManager {
     iniciarJogoPartida(novaPartida);
   }
 
-  public void recusarDesafioCliente(Cliente clienteDesafiado, Cliente clienteDesafiante) {
+  public void recusarDesafioCliente(Cliente clienteDesafiado, Cliente clienteDesafiante, String tipo) {
     String nomeDesafiado = clienteDesafiado.getNome();
 
     // Se o destinatario não desafiou o remetente, então não há desafio para recusar
     if (!nomeDesafiado.equals(clienteDesafiante.getJogadorDesafiado())) {
-      clienteDesafiado.enviarLinha("0|Nao ha desafio desse jogador|");
+      clienteDesafiado.enviarLinha(tipo, "404", "Nao ha desafio desse jogador", "");
       return;
     }
 
@@ -493,14 +512,13 @@ public class GameManager {
     clienteDesafiante.setJogadorDesafiado(null);
 
     // Notifica o desafiante que o desafio foi recusado
-    notificarJogadorPartida(clienteDesafiante, "Desafio recusado", nomeDesafiado);
+    notificarJogadorPartida(clienteDesafiante, tipo, "403", "Desafio recusado", nomeDesafiado);
 
-    clienteDesafiado.enviarLinha("1|Desafio recusado com sucesso|");
+    clienteDesafiado.enviarLinha(tipo, "200", "Desafio recusado com sucesso", "");
   }
 
-  public void chatGlobalCliente(Cliente cliente, String mensagem) {
+  public void chatGlobalCliente(Cliente cliente, String mensagem, String tipo) {
     String nomeCliente = cliente.getNome();
-    String linhaChat = "1|Chat global|" + nomeCliente + ": " + mensagem;
 
     // Percorre todos os clientes e envia a mensagem
     synchronized (listaCliente) {
@@ -511,16 +529,16 @@ public class GameManager {
         if (partidaAndamento != null && Constants.CHAT_GLOBAL_SOMENTE_LOBBY) {
           continue;
         }
-        clienteAtual.enviarLinha(linhaChat);
+        clienteAtual.enviarLinha(tipo, "200", "Mensagem global", nomeCliente + ": " + mensagem);
       }
     }
   }
 
-  public void chatPartidaCliente(Cliente cliente, String mensagem) {
+  public void chatPartidaCliente(Cliente cliente, String mensagem, String tipo) {
     String nomeCliente = cliente.getNome();
     JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
     if (partidaAndamento == null) {
-      cliente.enviarLinha("0|Cliente nao esta em uma partida em andamento|");
+      cliente.enviarLinha(tipo, "404", "Cliente nao esta em uma partida em andamento", "");
       return;
     }
 
@@ -532,60 +550,58 @@ public class GameManager {
     Iterator<Jogador> it = jogadoresSnapshot.iterator();
     while (it.hasNext()) {
       Jogador jogador = it.next();
-      notificarJogadorPartida(jogador, "Chat da partida", nomeCliente + ": " + mensagem);
+      notificarJogadorPartida(jogador, tipo, "200", "Chat da partida", nomeCliente + ": " + mensagem);
     }
   }
 
-  public void chatJogadorCliente(Cliente cliente, String nomeDestinatario, String mensagem) {
+  public void chatJogadorCliente(Cliente cliente, String nomeDestinatario, String mensagem, String tipo) {
     String nomeCliente = cliente.getNome();
     Cliente clienteDestinatario = listaCliente.get(nomeDestinatario);
     if (clienteDestinatario == null) {
-      cliente.enviarLinha("0|Jogador destinatario nao existe|");
+      cliente.enviarLinha(tipo, "404", "Jogador destinatario nao existe", "");
       return;
     }
 
-    String linhaChat = "1|Chat privado|" + nomeCliente + ": " + mensagem;
-
     // Envia a mensagem para o destinatário
-    clienteDestinatario.enviarLinha(linhaChat);
+    clienteDestinatario.enviarLinha(tipo, "200", "Chat privado", nomeCliente + ": " + mensagem);
     // Também envia o remetente para confirmação
-    cliente.enviarLinha(linhaChat);
+    cliente.enviarLinha(tipo, "200", "Chat privado", nomeCliente + ": " + mensagem);
   }
 
-  public void prontoPartidaCliente(Cliente cliente) {
+  public void prontoPartidaCliente(Cliente cliente, String tipo) {
     int idPartida = cliente.getIdPartida();
     JogoPartida partidaAndamento = encontrarPartidaAndamento(idPartida);
     if (partidaAndamento == null) {
-      cliente.enviarLinha("0|Cliente nao esta em uma partida em andamento|");
+      cliente.enviarLinha(tipo, "404", "Cliente nao esta em uma partida em andamento", "");
       return;
     }
     partidaAndamento.definirJogadorPronto(cliente.getNome());
-    cliente.enviarLinha("1|Jogador marcado como pronto|");
+    cliente.enviarLinha(tipo, "200", "Jogador marcado como pronto", "");
     // Se todos jogadores estiverem prontos, notifica e avança o turno (define o
     // primeiro turno)
     if (partidaAndamento.todosJogadoresProntos()) {
-      notificarJogadoresPartida(partidaAndamento, "Todos jogadores prontos", "");
+      notificarJogadoresPartida(partidaAndamento, Constants.TIPOTODOSPRONTOS, "200", "Todos jogadores prontos", "");
       proximoTurno(partidaAndamento);
     }
   }
 
-  public void moverCliente(Cliente cliente, int posicaoX, int posicaoY, boolean deslocamento) {
+  public void moverCliente(Cliente cliente, int posicaoX, int posicaoY, boolean deslocamento, String tipo) {
     String nomeCliente = cliente.getNome();
     JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
     if (partidaAndamento == null) {
-      cliente.enviarLinha("0|Cliente nao esta em uma partida em andamento|");
+      cliente.enviarLinha(tipo, "404", "Cliente nao esta em uma partida em andamento", "");
       return;
     }
 
     synchronized (partidaAndamento) {
       if (!partidaAndamento.todosJogadoresProntos()) {
-        cliente.enviarLinha("0|Jogadores ainda nao prontos|");
+        cliente.enviarLinha(tipo, "202", "Jogadores ainda nao prontos", "");
       } else if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
-        cliente.enviarLinha("0|Nao e o turno do jogador|");
+        cliente.enviarLinha(tipo, "403", "Nao e o turno do jogador", "");
       } else if (!partidaAndamento.movimento(nomeCliente, posicaoX, posicaoY, deslocamento)) {
-        cliente.enviarLinha("0|Movimento invalido|");
+        cliente.enviarLinha(tipo, "400", "Movimento invalido", "");
       } else {
-        cliente.enviarLinha("1|Movimento realizado com sucesso|");
+        cliente.enviarLinha(tipo, "200", "Movimento realizado com sucesso", "");
         // Evita que o timer dispare durante a troca de turno
         cancelarTimerTurno(partidaAndamento);
         proximoTurnoPartida(partidaAndamento);
@@ -593,23 +609,23 @@ public class GameManager {
     }
   }
 
-  public void atacarCliente(Cliente cliente, int posicaoX, int posicaoY, boolean deslocamento) {
+  public void atacarCliente(Cliente cliente, int posicaoX, int posicaoY, boolean deslocamento, String tipo) {
     String nomeCliente = cliente.getNome();
     JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
     if (partidaAndamento == null) {
-      cliente.enviarLinha("0|Cliente nao esta em uma partida em andamento|");
+      cliente.enviarLinha(tipo, "404", "Cliente nao esta em uma partida em andamento", "");
       return;
     }
 
     synchronized (partidaAndamento) {
       if (!partidaAndamento.todosJogadoresProntos()) {
-        cliente.enviarLinha("0|Jogadores ainda nao prontos|");
+        cliente.enviarLinha(tipo, "202", "Jogadores ainda nao prontos", "");
       } else if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
-        cliente.enviarLinha("0|Nao e o turno do jogador|");
+        cliente.enviarLinha(tipo, "403", "Nao e o turno do jogador", "");
       } else if (!partidaAndamento.ataque(nomeCliente, posicaoX, posicaoY, deslocamento)) {
-        cliente.enviarLinha("0|Ataque invalido|");
+        cliente.enviarLinha(tipo, "400", "Ataque invalido", "");
       } else {
-        cliente.enviarLinha("1|Ataque realizado com sucesso|");
+        cliente.enviarLinha(tipo, "200", "Ataque realizado com sucesso", "");
         // Avança para o próximo turno
         cancelarTimerTurno(partidaAndamento);
         proximoTurnoPartida(partidaAndamento);
@@ -617,23 +633,23 @@ public class GameManager {
     }
   }
 
-  public void sonarCliente(Cliente cliente, int posicaoX, int posicaoY, boolean deslocamento) {
+  public void sonarCliente(Cliente cliente, int posicaoX, int posicaoY, boolean deslocamento, String tipo) {
     String nomeCliente = cliente.getNome();
     JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
     if (partidaAndamento == null) {
-      cliente.enviarLinha("0|Cliente nao esta em uma partida em andamento|");
+      cliente.enviarLinha(tipo, "404", "Cliente nao esta em uma partida em andamento", "");
       return;
     }
 
     synchronized (partidaAndamento) {
       if (!partidaAndamento.todosJogadoresProntos()) {
-        cliente.enviarLinha("0|Jogadores ainda nao prontos|");
+        cliente.enviarLinha(tipo, "202", "Jogadores ainda nao prontos", "");
       } else if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
-        cliente.enviarLinha("0|Nao e o turno do jogador|");
+        cliente.enviarLinha(tipo, "403", "Nao e o turno do jogador", "");
       } else if (!partidaAndamento.dispositivoProximidade(nomeCliente, posicaoX, posicaoY, deslocamento)) {
-        cliente.enviarLinha("0|Sonar invalido|");
+        cliente.enviarLinha(tipo, "400", "Sonar invalido", "");
       } else {
-        cliente.enviarLinha("1|Sonar utilizado com sucesso|");
+        cliente.enviarLinha(tipo, "200", "Sonar utilizado com sucesso", "");
         // Avança para o próximo turno
         cancelarTimerTurno(partidaAndamento);
         proximoTurnoPartida(partidaAndamento);
@@ -641,21 +657,21 @@ public class GameManager {
     }
   }
 
-  public void passarCliente(Cliente cliente) {
+  public void passarCliente(Cliente cliente, String tipo) {
     String nomeCliente = cliente.getNome();
     JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
     if (partidaAndamento == null) {
-      cliente.enviarLinha("0|Cliente nao esta em uma partida em andamento|");
+      cliente.enviarLinha(tipo, "404", "Cliente nao esta em uma partida em andamento", "");
       return;
     }
 
     synchronized (partidaAndamento) {
       if (!partidaAndamento.todosJogadoresProntos()) {
-        cliente.enviarLinha("0|Jogadores ainda nao prontos|");
+        cliente.enviarLinha(tipo, "202", "Jogadores ainda nao prontos", "");
       } else if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
-        cliente.enviarLinha("0|Nao e o turno do jogador|");
+        cliente.enviarLinha(tipo, "403", "Nao e o turno do jogador", "");
       } else {
-        cliente.enviarLinha("1|Turno passado com sucesso|");
+        cliente.enviarLinha(tipo, "200", "Turno passado com sucesso", "");
         // Avança para o próximo turno
         cancelarTimerTurno(partidaAndamento);
         proximoTurnoPartida(partidaAndamento);
@@ -663,7 +679,7 @@ public class GameManager {
     }
   }
 
-  private void sairPartida(Cliente cliente, boolean enviarNotificacao) {
+  private void sairPartida(Cliente cliente, boolean enviarNotificacao, String tipo) {
     String nomeCliente = cliente.getNome();
     cliente.setJogadorDesafiado(null);
 
@@ -678,7 +694,7 @@ public class GameManager {
         cliente.setIdPartida(-1);
       }
       if (enviarNotificacao)
-        cliente.enviarLinha("1|Saiu da partida|");
+        cliente.enviarLinha(tipo, "200", "Saiu da partida em andamento com sucesso", "");
       if (avancarTurno) {
         proximoTurnoPartida(partidaAndamento);
       }
@@ -692,27 +708,27 @@ public class GameManager {
       partida.removerCliente(cliente);
       cliente.setIdPartida(-1);
       if (enviarNotificacao)
-        cliente.enviarLinha("1|Saiu da partida|");
+        cliente.enviarLinha(tipo, "200", "Saiu da partida com sucesso", "");
     } else if (enviarNotificacao) {
-      cliente.enviarLinha("0|Partida inexistente|");
+      cliente.enviarLinha(tipo, "404", "Partida inexistente", "");
     }
   }
 
-  public void sairPartidaCliente(Cliente cliente) {
-    sairPartida(cliente, true);
+  public void sairPartidaCliente(Cliente cliente, String tipo) {
+    sairPartida(cliente, true, tipo);
   }
 
-  public void sairCliente(Cliente cliente) {
+  public void sair(Cliente cliente, String codigo, String tipo) {
     String nomeCliente = cliente.getNome();
     System.out.println("Cliente desconectado: " + nomeCliente);
 
-    sairPartida(cliente, false);
+    sairPartida(cliente, false, tipo);
 
     // Remove o cliente da lista de clientes
     listaCliente.remove(nomeCliente);
     // Cancela o keepalive deste cliente
     cancelarKeepAlive(cliente);
-    cliente.enviarLinha("1|Cliente desconectado|");
+    cliente.enviarLinha(tipo, codigo, "Desconectado com sucesso", "");
 
     // Fecha o socket deste cliente
     try {
@@ -723,6 +739,10 @@ public class GameManager {
     } catch (IOException e) {
       // ignora
     }
+  }
+
+  public void sairCliente(Cliente cliente, String tipo) {
+    sair(cliente, "200", tipo);
   }
 
   // Método criado pelo Agente Copilot do VSCode ao pedir como se
@@ -749,7 +769,7 @@ public class GameManager {
           jogadorTurnoAtual = jogoPartida.buscarJogadorPorNome(nomeJogadorTurno);
         }
         if (jogadorTurnoAtual != null) {
-          notificarJogadorPartida(jogadorTurnoAtual, "Seu turno expirou", nomeJogadorTurno);
+          notificarJogadorPartida(jogadorTurnoAtual, Constants.TIPOTURNOEXPIROU, "408", "Seu turno expirou", nomeJogadorTurno);
         }
         // Força avanço do turno (equivale a PASSAR)
         proximoTurnoPartida(jogoPartida);
@@ -771,7 +791,7 @@ public class GameManager {
     }
   }
 
-  public void keepAliveCliente(Cliente cliente) {
+  public void keepAliveCliente(Cliente cliente, String tipo) {
     if (!Constants.KEEPALIVE)
       return;
     if (cliente == null)
@@ -786,7 +806,7 @@ public class GameManager {
     ScheduledFuture<?> futuro = keepAliveScheduler.schedule(() -> {
       try {
         // Tempo esgotado: desconecta o cliente
-        sairCliente(cliente);
+        sair(cliente, "408", Constants.TIPODESCONECTADO);
       } catch (Exception e) {
         e.printStackTrace();
       } finally {

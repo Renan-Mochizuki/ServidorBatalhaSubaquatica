@@ -31,5 +31,37 @@ public class Constants {
   public static final int DISTANCIA_DISPOSITIVO_PROXIMIDADE = 1;
   public static final int ALCANCE_ATAQUE = 2;
   public static final int ALCANCE_DISPOSITIVO_PROXIMIDADE = 3;
-
+  public static final String SEPARADOR = " ";
+  public static final String SEPARADORCLIENTE = " "; // "\\|";
+  // Nome das mensagens enviadas pelo servidor (resposta direta do cliente)
+  public static final String TIPOCADASTRAR = "CADASTRAR";
+  public static final String TIPOLISTARPARTIDAS = "LISTARPARTIDAS";
+  public static final String TIPOLISTARJOGADORES = "LISTARJOGADORES";
+  public static final String TIPOENTRARPARTIDA = "ENTRARPARTIDA";
+  public static final String TIPODESAFIAR = "DESAFIAR";
+  public static final String TIPOACEITARDESAFIO = "ACEITARDESAFIO";
+  public static final String TIPORECUSARDESAFIO = "RECUSARDESAFIO";
+  public static final String TIPOCHATGLOBAL = "CHATGLOBAL";
+  public static final String TIPOCHATPARTIDA = "CHATPARTIDA";
+  public static final String TIPOCHATJOGADOR = "CHATJOGADOR";
+  public static final String TIPOPRONTOPARTIDA = "PRONTOPARTIDA";
+  public static final String TIPOMOVER = "MOVER";
+  public static final String TIPOATACAR = "ATACAR";
+  public static final String TIPOSONAR = "SONAR";
+  public static final String TIPOPASSAR = "PASSAR";
+  public static final String TIPOSAIRPARTIDA = "SAIRPARTIDA";
+  public static final String TIPOSAIR = "SAIR";
+  public static final String TIPOKEEPALIVE = "KEEPALIVE";
+  // Nome das mensagens enviadas pelo servidor (adicionais do servidor)
+  public static final String TIPODESCONECTADO = "DESCONECTADO";
+  public static final String TIPORESERVADOPARTIDA = "RESERVADOPARTIDA";
+  public static final String TIPODETECTADO = "DETECTADO";
+  public static final String TIPOINICIOPARTIDA = "INICIOPARTIDA";
+  public static final String TIPOACERTO = "ACERTO";
+  public static final String TIPOMORTE = "MORTE";
+  public static final String TIPOVITORIA = "VITORIA";
+  public static final String TIPOFIMPARTIDA = "FIMPARTIDA";
+  public static final String TIPOTURNO = "TURNO";
+  public static final String TIPOTURNOEXPIROU = "TURNO";
+  public static final String TIPOTODOSPRONTOS = "TODOSPRONTOS";
 }

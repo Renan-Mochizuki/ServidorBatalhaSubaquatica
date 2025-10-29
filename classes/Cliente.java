@@ -58,7 +58,7 @@ public class Cliente {
   // Enviar uma linha para o cliente de maneira mais segura
   // Código gerado pelo Copilot ao pedir por um método único de envio de mensagem
   // ao cliente
-  public boolean enviarLinha(String linha) {
+  public boolean enviarLinha(String tipo, String codigo, String mensagem, String valor) {
     synchronized (this) {
       Socket socket = this.connectionSocket;
       if (socket == null || socket.isClosed() || socket.isOutputShutdown()) {
@@ -66,6 +66,8 @@ public class Cliente {
       }
       try {
         DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+        String spr = Constants.SEPARADOR;
+        String linha = tipo + spr + codigo + spr + mensagem + spr + valor;
         out.writeBytes(linha + "\n");
         out.flush();
         return true;

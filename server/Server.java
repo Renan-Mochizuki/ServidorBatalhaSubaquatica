@@ -10,7 +10,7 @@ public class Server {
   // preocupar com condições de corrida ou uma melhor separação de
   // responsabilidades essa classe tem o intuito de tentar melhorar isso
   private final GameManager gameManager = new GameManager();
-  private final Map<String, String> tradutor = new HashMap<String, String>();
+  private final Tradutor tradutor = new Tradutor();
 
   // Declarando thread para lidar com cada cliente conectado
   // Como lidar com threads visto em:
@@ -27,10 +27,11 @@ public class Server {
     // daquele indice
     // Se não foi informado, envia uma mensagem dizendo que nomeCampo não foi
     // informado ao cliente
-    private boolean verificarCampo(String nomeCampo, int indice, String[] splitedSentence, DataOutputStream outToClient)
+    private boolean verificarCampo(String nomeCampo, int indice, String[] splitedSentence, String tipo,
+        DataOutputStream outToClient)
         throws IOException {
       if (splitedSentence.length < indice + 1 || splitedSentence[indice].isEmpty()) {
-        enviarLinha(outToClient, "0|" + nomeCampo + " nao informado|");
+        enviarLinha(outToClient, tipo, "400", nomeCampo + " nao informado", nomeCampo);
         return false;
       }
       return true;
@@ -38,14 +39,15 @@ public class Server {
 
     // Método para validar se o cliente existe e se o token está correto, se estiver
     // correto, ele vai setar o socket de conexão do cliente novamente
-    private boolean validarCliente(Cliente cliente, String tokenCliente, DataOutputStream outToClient,
-        Socket connectionSocket) throws IOException {
+    private boolean validarCliente(Cliente cliente, String tokenCliente, String tipo, Socket connectionSocket)
+        throws IOException {
+      DataOutputStream outToClient = new DataOutputStream(connectionSocket.getOutputStream());
       if (cliente == null) {
-        enviarLinha(outToClient, "0|Cliente nao encontrado|");
+        enviarLinha(outToClient, tipo, "404", "Cliente nao encontrado", "");
         return false;
       }
       if (!cliente.validarToken(tokenCliente)) {
-        enviarLinha(outToClient, "0|Token invalido|");
+        enviarLinha(outToClient, tipo, "401", "Token invalido", "");
         return false;
       }
 
@@ -53,15 +55,17 @@ public class Server {
       // desconectado e reconectado
       cliente.setConnectionSocket(connectionSocket);
       // Renova o keepalive para qualquer ação validada
-      gameManager.keepAliveCliente(cliente);
+      gameManager.keepAliveCliente(cliente, Constants.TIPOKEEPALIVE);
       return true;
     }
 
     // Método para enviar uma linha para o cliente evitando erros de conexão
-    private void enviarLinha(DataOutputStream outToClient, String linha) {
+    private void enviarLinha(DataOutputStream outToClient, String tipo, String codigo, String texto, String valor) {
       if (outToClient == null)
         return;
       try {
+        String spr = Constants.SEPARADOR;
+        String linha = tipo + spr + codigo + spr + texto + spr + valor;
         outToClient.writeBytes(linha + "\n");
         outToClient.flush();
       } catch (IOException e) {
@@ -81,38 +85,44 @@ public class Server {
         Map<String, Cliente> listaCliente = gameManager.getListaCliente();
         while ((sentence = inFromClient.readLine()) != null && !sair) {
           // Separando a sentença nas palavras
-          String splitedSentence[] = sentence.split(" ");
+          String splitedSentence[] = sentence.split(Constants.SEPARADORCLIENTE);
           String comandoEnviado = splitedSentence[0].toUpperCase();
+          System.out.println("Comando recebido: " + comandoEnviado);
           if (tradutor.containsKey(comandoEnviado)) {
             comandoEnviado = tradutor.get(comandoEnviado);
           }
+          System.out.println("Comando recebido: " + comandoEnviado);
           // Switch para os comandos enviados pelo cliente
           switch (comandoEnviado) {
             // CADASTRAR <nomeCliente>
             case "CADASTRAR": {
-              if (!verificarCampo("nome", 1, splitedSentence, outToClient))
+              String tipo = Constants.TIPOCADASTRAR;
+              if (!verificarCampo("nome", 1, splitedSentence, tipo, outToClient))
                 break;
 
               String nomeCliente = splitedSentence[1];
 
-              gameManager.cadastrarCliente(listaCliente, nomeCliente, connectionSocket);
+              gameManager.cadastrarCliente(listaCliente, nomeCliente, connectionSocket, tipo);
               break;
             }
             // LISTARPARTIDAS
             case "LISTARPARTIDAS": {
-              gameManager.listarPartidasCliente(outToClient);
+              String tipo = Constants.TIPOLISTARPARTIDAS;
+              gameManager.listarPartidasCliente(outToClient, tipo);
               break;
             }
             // LISTARJOGADORES
             case "LISTARJOGADORES": {
-              gameManager.listarJogadoresCliente(outToClient);
+              String tipo = Constants.TIPOLISTARJOGADORES;
+              gameManager.listarJogadoresCliente(outToClient, tipo);
               break;
             }
             // ENTRARPARTIDA <nome> <token> <idPartida>
             case "ENTRARPARTIDA": {
-              if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
-                  !verificarCampo("token", 2, splitedSentence, outToClient) ||
-                  !verificarCampo("idPartida", 3, splitedSentence, outToClient))
+              String tipo = Constants.TIPOENTRARPARTIDA;
+              if (!verificarCampo("nome", 1, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("token", 2, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("idPartida", 3, splitedSentence, tipo, outToClient))
                 break;
 
               String nomeCliente = splitedSentence[1];
@@ -121,7 +131,7 @@ public class Server {
 
               Cliente cliente = listaCliente.get(nomeCliente);
 
-              if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+              if (!validarCliente(cliente, tokenCliente, tipo, connectionSocket))
                 break;
 
               // Convertendo idPartida para inteiro
@@ -129,19 +139,19 @@ public class Server {
               try {
                 idPartida = Integer.parseInt(idPartidaStr);
               } catch (NumberFormatException e) {
-                // Já validamos o cliente: usa canal sincronizado do Cliente
-                cliente.enviarLinha("0|ID da partida invalido|");
+                cliente.enviarLinha("LISTARPARTIDAS", "400", "ID da partida invalido", "idPartida");
                 break;
               }
 
-              gameManager.entrarPartidaCliente(cliente, idPartida);
+              gameManager.entrarPartidaCliente(cliente, idPartida, tipo);
               break;
             }
             // DESAFIAR <nomeDesafiante> <token> <nomeDesafiado>
             case "DESAFIAR": {
-              if (!verificarCampo("nomeDesafiante", 1, splitedSentence, outToClient) ||
-                  !verificarCampo("token", 2, splitedSentence, outToClient) ||
-                  !verificarCampo("nomeDesafiado", 3, splitedSentence, outToClient))
+              String tipo = Constants.TIPODESAFIAR;
+              if (!verificarCampo("nomeDesafiante", 1, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("token", 2, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("nomeDesafiado", 3, splitedSentence, tipo, outToClient))
                 break;
               String nomeDesafiante = splitedSentence[1];
               String tokenDesafiante = splitedSentence[2];
@@ -149,24 +159,25 @@ public class Server {
 
               Cliente clienteDesafiante = listaCliente.get(nomeDesafiante);
 
-              if (!validarCliente(clienteDesafiante, tokenDesafiante, outToClient, connectionSocket))
+              if (!validarCliente(clienteDesafiante, tokenDesafiante, tipo, connectionSocket))
                 break;
 
               Cliente clienteDesafiado = listaCliente.get(nomeDesafiado);
               if (clienteDesafiado == null) {
                 // Responde via cliente desafiante (já validado)
-                clienteDesafiante.enviarLinha("0|Cliente desafiado nao encontrado|");
+                clienteDesafiante.enviarLinha("DESAFIAR", "404", "Cliente desafiado nao encontrado", "nomeDesafiado");
                 break;
               }
 
-              gameManager.desafiarCliente(clienteDesafiante, clienteDesafiado);
+              gameManager.desafiarCliente(clienteDesafiante, clienteDesafiado, tipo);
               break;
             }
             // ACEITARDESAFIO <nomeDesafiado> <token> <nomeDesafiante>
             case "ACEITARDESAFIO": {
-              if (!verificarCampo("nomeDesafiado", 1, splitedSentence, outToClient) ||
-                  !verificarCampo("token", 2, splitedSentence, outToClient) ||
-                  !verificarCampo("nomeDesafiante", 3, splitedSentence, outToClient))
+              String tipo = Constants.TIPOACEITARDESAFIO;
+              if (!verificarCampo("nomeDesafiado", 1, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("token", 2, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("nomeDesafiante", 3, splitedSentence, tipo, outToClient))
                 break;
               String nomeDesafiado = splitedSentence[1];
               String tokenDesafiado = splitedSentence[2];
@@ -174,24 +185,25 @@ public class Server {
 
               Cliente clienteDesafiado = listaCliente.get(nomeDesafiado);
 
-              if (!validarCliente(clienteDesafiado, tokenDesafiado, outToClient, connectionSocket))
+              if (!validarCliente(clienteDesafiado, tokenDesafiado, tipo, connectionSocket))
                 break;
 
               Cliente clienteDesafiante = listaCliente.get(nomeDesafiante);
               if (clienteDesafiante == null) {
-                // Responde via cliente desafiado (já validado)
-                clienteDesafiado.enviarLinha("0|Cliente desafiante nao encontrado|");
+                clienteDesafiado.enviarLinha("ACEITARDESAFIO", "404", "Cliente desafiante nao encontrado",
+                    "nomeDesafiante");
                 break;
               }
 
-              gameManager.aceitarDesafioCliente(clienteDesafiado, clienteDesafiante);
+              gameManager.aceitarDesafioCliente(clienteDesafiado, clienteDesafiante, tipo);
               break;
             }
             // RECUSARDESAFIO <nomeDesafiado> <token> <nomeDesafiante>
             case "RECUSARDESAFIO": {
-              if (!verificarCampo("nomeDesafiado", 1, splitedSentence, outToClient) ||
-                  !verificarCampo("token", 2, splitedSentence, outToClient) ||
-                  !verificarCampo("nomeDesafiante", 3, splitedSentence, outToClient))
+              String tipo = Constants.TIPORECUSARDESAFIO;
+              if (!verificarCampo("nomeDesafiado", 1, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("token", 2, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("nomeDesafiante", 3, splitedSentence, tipo, outToClient))
                 break;
               String nomeDesafiado = splitedSentence[1];
               String tokenDesafiado = splitedSentence[2];
@@ -199,24 +211,25 @@ public class Server {
 
               Cliente clienteDesafiado = listaCliente.get(nomeDesafiado);
 
-              if (!validarCliente(clienteDesafiado, tokenDesafiado, outToClient, connectionSocket))
+              if (!validarCliente(clienteDesafiado, tokenDesafiado, tipo, connectionSocket))
                 break;
 
               Cliente clienteDesafiante = listaCliente.get(nomeDesafiante);
               if (clienteDesafiante == null) {
-                // Responde via cliente desafiado (já validado)
-                clienteDesafiado.enviarLinha("0|Cliente desafiante nao encontrado|");
+                clienteDesafiado.enviarLinha("RECUSARDESAFIO", "404", "Cliente desafiante nao encontrado",
+                    "nomeDesafiante");
                 break;
               }
 
-              gameManager.recusarDesafioCliente(clienteDesafiado, clienteDesafiante);
+              gameManager.recusarDesafioCliente(clienteDesafiado, clienteDesafiante, tipo);
               break;
             }
             // CHATGLOBAL <nome> <token> <mensagem>
             case "CHATGLOBAL": {
-              if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
-                  !verificarCampo("token", 2, splitedSentence, outToClient) ||
-                  !verificarCampo("mensagem", 3, splitedSentence, outToClient))
+              String tipo = Constants.TIPOCHATGLOBAL;
+              if (!verificarCampo("nome", 1, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("token", 2, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("mensagem", 3, splitedSentence, tipo, outToClient))
                 break;
 
               String nomeCliente = splitedSentence[1];
@@ -226,17 +239,18 @@ public class Server {
 
               Cliente cliente = listaCliente.get(nomeCliente);
 
-              if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+              if (!validarCliente(cliente, tokenCliente, tipo, connectionSocket))
                 break;
 
-              gameManager.chatGlobalCliente(cliente, mensagem);
+              gameManager.chatGlobalCliente(cliente, mensagem, tipo);
               break;
             }
             // CHATPARTIDA <nome> <token> <mensagem>
             case "CHATPARTIDA": {
-              if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
-                  !verificarCampo("token", 2, splitedSentence, outToClient) ||
-                  !verificarCampo("mensagem", 3, splitedSentence, outToClient))
+              String tipo = Constants.TIPOCHATPARTIDA;
+              if (!verificarCampo("nome", 1, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("token", 2, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("mensagem", 3, splitedSentence, tipo, outToClient))
                 break;
 
               String nomeCliente = splitedSentence[1];
@@ -246,18 +260,19 @@ public class Server {
 
               Cliente cliente = listaCliente.get(nomeCliente);
 
-              if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+              if (!validarCliente(cliente, tokenCliente, tipo, connectionSocket))
                 break;
 
-              gameManager.chatPartidaCliente(cliente, mensagem);
+              gameManager.chatPartidaCliente(cliente, mensagem, tipo);
               break;
             }
             // CHATJOGADOR <nome> <token> <nomeDestinatario> <mensagem>
             case "CHATJOGADOR": {
-              if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
-                  !verificarCampo("token", 2, splitedSentence, outToClient) ||
-                  !verificarCampo("nomeDestinatario", 3, splitedSentence, outToClient) ||
-                  !verificarCampo("mensagem", 4, splitedSentence, outToClient))
+              String tipo = Constants.TIPOCHATJOGADOR;
+              if (!verificarCampo("nome", 1, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("token", 2, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("nomeDestinatario", 3, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("mensagem", 4, splitedSentence, tipo, outToClient))
                 break;
 
               String nomeCliente = splitedSentence[1];
@@ -268,16 +283,17 @@ public class Server {
 
               Cliente cliente = listaCliente.get(nomeCliente);
 
-              if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+              if (!validarCliente(cliente, tokenCliente, tipo, connectionSocket))
                 break;
 
-              gameManager.chatJogadorCliente(cliente, nomeDestinatario, mensagem);
+              gameManager.chatJogadorCliente(cliente, nomeDestinatario, mensagem, tipo);
               break;
             }
             // PRONTOPARTIDA <nome> <token>
             case "PRONTOPARTIDA": {
-              if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
-                  !verificarCampo("token", 2, splitedSentence, outToClient))
+              String tipo = Constants.TIPOPRONTOPARTIDA;
+              if (!verificarCampo("nome", 1, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("token", 2, splitedSentence, tipo, outToClient))
                 break;
 
               String nomeCliente = splitedSentence[1];
@@ -285,18 +301,19 @@ public class Server {
 
               Cliente cliente = listaCliente.get(nomeCliente);
 
-              if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+              if (!validarCliente(cliente, tokenCliente, tipo, connectionSocket))
                 break;
 
-              gameManager.prontoPartidaCliente(cliente);
+              gameManager.prontoPartidaCliente(cliente, tipo);
               break;
             }
             // MOVER <nome> <token> <posicaoX> <posicaoY> <modoDeslocamento>
             case "MOVER": {
-              if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
-                  !verificarCampo("token", 2, splitedSentence, outToClient) ||
-                  !verificarCampo("posicaoX", 3, splitedSentence, outToClient) ||
-                  !verificarCampo("posicaoY", 4, splitedSentence, outToClient))
+              String tipo = Constants.TIPOMOVER;
+              if (!verificarCampo("nome", 1, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("token", 2, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("posicaoX", 3, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("posicaoY", 4, splitedSentence, tipo, outToClient))
                 break;
 
               String nomeCliente = splitedSentence[1];
@@ -314,18 +331,19 @@ public class Server {
 
               Cliente cliente = listaCliente.get(nomeCliente);
 
-              if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+              if (!validarCliente(cliente, tokenCliente, tipo, connectionSocket))
                 break;
 
-              gameManager.moverCliente(cliente, posicaoX, posicaoY, deslocamento);
+              gameManager.moverCliente(cliente, posicaoX, posicaoY, deslocamento, tipo);
               break;
             }
             // ATACAR <nome> <token> <posicaoX> <posicaoY> <modoDeslocamento>
             case "ATACAR": {
-              if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
-                  !verificarCampo("token", 2, splitedSentence, outToClient) ||
-                  !verificarCampo("posicaoX", 3, splitedSentence, outToClient) ||
-                  !verificarCampo("posicaoY", 4, splitedSentence, outToClient))
+              String tipo = Constants.TIPOATACAR;
+              if (!verificarCampo("nome", 1, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("token", 2, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("posicaoX", 3, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("posicaoY", 4, splitedSentence, tipo, outToClient))
                 break;
 
               String nomeCliente = splitedSentence[1];
@@ -343,18 +361,19 @@ public class Server {
 
               Cliente cliente = listaCliente.get(nomeCliente);
 
-              if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+              if (!validarCliente(cliente, tokenCliente, tipo, connectionSocket))
                 break;
 
-              gameManager.atacarCliente(cliente, posicaoX, posicaoY, deslocamento);
+              gameManager.atacarCliente(cliente, posicaoX, posicaoY, deslocamento, tipo);
               break;
             }
             // SONAR <nome> <token> <posicaoX> <posicaoY> <modoDeslocamento>
             case "SONAR": {
-              if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
-                  !verificarCampo("token", 2, splitedSentence, outToClient) ||
-                  !verificarCampo("posicaoX", 3, splitedSentence, outToClient) ||
-                  !verificarCampo("posicaoY", 4, splitedSentence, outToClient))
+              String tipo = Constants.TIPOSONAR;
+              if (!verificarCampo("nome", 1, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("token", 2, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("posicaoX", 3, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("posicaoY", 4, splitedSentence, tipo, outToClient))
                 break;
 
               String nomeCliente = splitedSentence[1];
@@ -372,16 +391,17 @@ public class Server {
 
               Cliente cliente = listaCliente.get(nomeCliente);
 
-              if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+              if (!validarCliente(cliente, tokenCliente, tipo, connectionSocket))
                 break;
 
-              gameManager.sonarCliente(cliente, posicaoX, posicaoY, deslocamento);
+              gameManager.sonarCliente(cliente, posicaoX, posicaoY, deslocamento, tipo);
               break;
             }
             // PASSAR <nome> <token>
             case "PASSAR": {
-              if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
-                  !verificarCampo("token", 2, splitedSentence, outToClient))
+              String tipo = Constants.TIPOPASSAR;
+              if (!verificarCampo("nome", 1, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("token", 2, splitedSentence, tipo, outToClient))
                 break;
 
               String nomeCliente = splitedSentence[1];
@@ -389,16 +409,17 @@ public class Server {
 
               Cliente cliente = listaCliente.get(nomeCliente);
 
-              if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+              if (!validarCliente(cliente, tokenCliente, tipo, connectionSocket))
                 break;
 
-              gameManager.passarCliente(cliente);
+              gameManager.passarCliente(cliente, tipo);
               break;
             }
             // SAIRPARTIDA <nome> <token>
             case "SAIRPARTIDA": {
-              if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
-                  !verificarCampo("token", 2, splitedSentence, outToClient))
+              String tipo = Constants.TIPOSAIRPARTIDA;
+              if (!verificarCampo("nome", 1, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("token", 2, splitedSentence, tipo, outToClient))
                 break;
 
               String nomeCliente = splitedSentence[1];
@@ -406,16 +427,17 @@ public class Server {
 
               Cliente cliente = listaCliente.get(nomeCliente);
 
-              if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+              if (!validarCliente(cliente, tokenCliente, tipo, connectionSocket))
                 break;
 
-              gameManager.sairPartidaCliente(cliente);
+              gameManager.sairPartidaCliente(cliente, tipo);
               break;
             }
             // SAIR <nome> <token>
             case "SAIR": {
-              if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
-                  !verificarCampo("token", 2, splitedSentence, outToClient))
+              String tipo = Constants.TIPOSAIR;
+              if (!verificarCampo("nome", 1, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("token", 2, splitedSentence, tipo, outToClient))
                 break;
 
               String nomeCliente = splitedSentence[1];
@@ -423,12 +445,12 @@ public class Server {
 
               Cliente cliente = listaCliente.get(nomeCliente);
 
-              if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+              if (!validarCliente(cliente, tokenCliente, tipo, connectionSocket))
                 break;
 
               System.out.println("Removendo cliente: " + nomeCliente);
 
-              gameManager.sairCliente(cliente);
+              gameManager.sairCliente(cliente, tipo);
 
               // Marca para encerrar o loop de leitura e fechar o socket
               sair = true;
@@ -436,8 +458,9 @@ public class Server {
             }
             // KEEPALIVE <nome> <token>
             case "KEEPALIVE": {
-              if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
-                  !verificarCampo("token", 2, splitedSentence, outToClient))
+              String tipo = Constants.TIPOKEEPALIVE;
+              if (!verificarCampo("nome", 1, splitedSentence, tipo, outToClient) ||
+                  !verificarCampo("token", 2, splitedSentence, tipo, outToClient))
                 break;
 
               String nomeCliente = splitedSentence[1];
@@ -445,14 +468,14 @@ public class Server {
 
               Cliente cliente = listaCliente.get(nomeCliente);
 
-              if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+              if (!validarCliente(cliente, tokenCliente, tipo, connectionSocket))
                 break;
 
-              gameManager.keepAliveCliente(cliente);
+              gameManager.keepAliveCliente(cliente, tipo);
               break;
             }
             default: {
-              enviarLinha(outToClient, "0|Comando desconhecido|");
+              enviarLinha(outToClient, "DESCONHECIDO", "405", "Comando desconhecido", "");
               break;
             }
           }
@@ -469,36 +492,6 @@ public class Server {
         }
       }
     }
-
-  }
-
-  // Método apenas para permitir o cliente enviar comandos com textos diferentes
-  public void inicializarTradutor() {
-    tradutor.put("CADASTRO", "CADASTRAR");
-    tradutor.put("DESAFIO", "DESAFIAR");
-    tradutor.put("PRONTO", "PRONTOPARTIDA");
-    tradutor.put("MOVIMENTO", "MOVER");
-    tradutor.put("ATAQUE", "ATACAR");
-    tradutor.put("MISSIL", "ATACAR");
-    tradutor.put("DISPOSITIVOPROXIMIDADE", "SONAR");
-    tradutor.put("PULAR", "PASSAR");
-    tradutor.put("PING", "KEEPALIVE");
-    tradutor.put("REGISTER", "CADASTRAR");
-    tradutor.put("LISTGAMES", "LISTARPARTIDAS");
-    tradutor.put("LISTPLAYERS", "LISTARJOGADORES");
-    tradutor.put("JOINGAME", "ENTRARPARTIDA");
-    tradutor.put("CHALLENGE", "DESAFIAR");
-    tradutor.put("ACCEPTCHALLENGE", "ACEITARDESAFIO");
-    tradutor.put("REJECTCHALLENGE", "RECUSARDESAFIO");
-    tradutor.put("GLOBALCHAT", "CHATGLOBAL");
-    tradutor.put("GAMECHAT", "CHATPARTIDA");
-    tradutor.put("PLAYERCHAT", "CHATJOGADOR");
-    tradutor.put("MOVE", "MOVER");
-    tradutor.put("ATTACK", "ATACAR");
-    tradutor.put("SONAR", "SONAR");
-    tradutor.put("PASS", "PASSAR");
-    tradutor.put("LEAVEGAME", "SAIRPARTIDA");
-    tradutor.put("EXIT", "SAIR");
   }
 
   public static void main(String[] args) throws Exception {
@@ -510,7 +503,6 @@ public class Server {
     try {
       Server server = new Server();
       server.gameManager.criarPartidas();
-      server.inicializarTradutor();
 
       while (true) {
         // Aceite todas as conexões de entrada

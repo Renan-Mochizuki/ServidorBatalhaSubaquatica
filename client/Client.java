@@ -21,7 +21,7 @@ public class Client {
         while (running.get() && (serverLine = inFromServer.readLine()) != null) {
           System.out.println("\nFROM SERVER: " + serverLine);
           // Re-print prompt para usuário digitar novamente
-          System.out.print("Enter a sentence: ");
+          System.out.print(": ");
         }
       } catch (IOException e) {
         if (running.get()) {
@@ -37,6 +37,7 @@ public class Client {
     // Thread principal lê do console e envia ao servidor a qualquer momento
     try {
       String sentence;
+      System.out.print("Enter a sentence: ");
       while (running.get() && (sentence = inFromUser.readLine()) != null) {
         if (sentence.equalsIgnoreCase("fim")) {
           // Sinaliza encerramento e fecha socket

@@ -16,7 +16,7 @@ Executar Cliente
 
 `javac -d build .\classes\* .\server\* && java -cp build server.Server`
 
-`javac -d build Client.java && java -cp build Client`
+`javac -d build .\client\Client.java && java -cp build client.Client`
 
 
 Criar executavel Server
@@ -32,7 +32,7 @@ Criar executavel Server
 
 
 Criar executavel Cliente
-`javac --release 21 -d build -sourcepath . .\Client.java`
+`javac --release 21 -d build -sourcepath . .\client\Client.java`
 
 `jar cfe build\input\Client.jar client.Client -C build .`
 
@@ -40,5 +40,5 @@ Criar executavel Cliente
 
 .
 
-`javac --release 21 -d build -sourcepath . .\Client.java && jar cfe build\input\Client.jar client.Client -C build . && jpackage --input build\input --name Cliente --main-jar Client.jar --main-class Client --type app-image --win-console --dest build`
+`javac --release 21 -d build -sourcepath . .\client\Client.java && jar cfe build\input\Client.jar client.Client -C build . && jpackage --input build\input --name Cliente --main-jar Client.jar --main-class Client --type app-image --win-console --dest build`
 
