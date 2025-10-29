@@ -56,7 +56,8 @@ public class Cliente {
   }
 
   // Enviar uma linha para o cliente de maneira mais segura
-  // Código gerado pelo Copilot ao pedir por um método único de envio de mensagem ao cliente
+  // Código gerado pelo Copilot ao pedir por um método único de envio de mensagem
+  // ao cliente
   public boolean enviarLinha(String linha) {
     synchronized (this) {
       Socket socket = this.connectionSocket;

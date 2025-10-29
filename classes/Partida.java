@@ -61,6 +61,7 @@ public class Partida {
   void setAndamento(Boolean andamento) {
     this.andamento = andamento;
   }
+
   void limparClientes() {
     this.clientes.clear();
   }

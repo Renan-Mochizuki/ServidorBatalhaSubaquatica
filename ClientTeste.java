@@ -1,128 +1,67 @@
 import java.io.*;
 import java.net.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ClientTeste {
-  static String comandos1[] = {
-      "cadastrar a",
-      "desafiar a a b",
-      "mover a a 1 1 1",
-      "mover a a 1 1 1",
-      "mover a a 1 1 1",
-      "mover a a 1 1 1",
-      "mover a a 1 1 1",
-      "mover a a 1 1 1",
-      "mover a a 1 0 1",
-      "mover a a 0 1 1",
-      "mover a a 1 0 1",
-      "mover a a 0 1 1",
-      "mover a a 1 0 1",
-      "mover a a 0 1 1",
-      "mover a a 1 0 1",
-      "mover a a 0 1 1",
-      "mover a a 1 0 1",
-      "mover a a 0 1 1",
-      "mover a a 1 0 1",
-      "mover a a 0 1 1",
-      "mover a a 1 0 1",
-      "mover a a 0 1 1",
-      "mover a a 1 0 1",
-      "mover a a 0 1 1",
-      "mover a a 1 0 1",
-      "mover a a 0 1 1",
-      "atacar a a 15 0",
-      "atacar a a 15 0",
-      "atacar a a 15 0",
-      "atacar a a 15 0",
-      "atacar a a 15 0",
-  };
-
-  static String comandos2[] = {
-      "cadastrar b",
-      "desafiar b b a",
-      "mover b b 1 1 1",
-      "mover b b 1 1 1",
-      "mover b b 1 1 1",
-      "mover b b 1 1 1",
-      "mover b b 1 1 1",
-      "mover b b 1 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-  };
-
-  static String comandos3[] = {
-      "cadastrar b",
-      "desafiar b b a",
-      "mover b b 1 1 1",
-      "mover b b 1 1 1",
-      "mover b b 1 1 1",
-      "mover b b 1 1 1",
-      "mover b b 1 1 1",
-      "mover b b 1 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-  };
-
   static String comandos[];
 
   public static void main(String[] args) throws Exception {
-    int tempoComandos = 1000;
-
-    // Leitura do console para enviar comandos manuais
-    BufferedReader inFromUser = new BufferedReader(new InputStreamReader(System.in));
+    int tmpTempoComandos = 200;
 
     Socket clientSocket = new Socket("localhost", 9876);
     DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
     BufferedReader inFromServer = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-    String escolha = inFromUser.readLine();
-    
-    switch (escolha) {
-      case "a":
-        comandos = comandos1;
-        break;
+    // Lê comandos de um arquivo texto no mesmo diretório do projeto.
+    // Primeira linha: tempo em milissegundos entre comandos.
+    // Demais linhas: comandos a serem enviados.
+    String fileName = args != null && args.length > 0 ? args[0] : "Teste.txt";
+    try {
+      List<String> linhas = Files.readAllLines(Paths.get(fileName), StandardCharsets.UTF_8);
+      if (linhas.isEmpty()) {
+        System.err.println("Arquivo de comandos vazio: " + fileName);
+        clientSocket.close();
+        return;
+      }
+      // Primeira linha: tempoComandos
+      String tempoStr = linhas.get(0).trim();
+      try {
+        tmpTempoComandos = Integer.parseInt(tempoStr);
+      } catch (NumberFormatException nfe) {
+        System.err.println("Primeira linha deve ser o tempo em ms. Valor lido: '" + tempoStr + "'. Usando 200ms.");
+        tmpTempoComandos = 200;
+      }
 
-      case "b":
-        comandos = comandos2;
-        break;
-      case "c":
-        comandos = comandos3;
-        break;
-    
-      default:
-        break;
+      // Demais linhas: comandos (ignora vazias e comentários iniciados com '#')
+      List<String> listaComandos = new ArrayList<>();
+      for (int i = 1; i < linhas.size(); i++) {
+        String line = linhas.get(i);
+        if (line == null)
+          continue;
+        String cmd = line.trim();
+        if (cmd.isEmpty() || cmd.startsWith("#"))
+          continue;
+        listaComandos.add(cmd);
+      }
+      if (listaComandos.isEmpty()) {
+        System.err.println("Nenhum comando encontrado no arquivo: " + fileName);
+        clientSocket.close();
+        return;
+      }
+      comandos = listaComandos.toArray(new String[0]);
+      System.out.println(
+          "Carregado " + comandos.length + " comandos de '" + fileName + "' com intervalo de " + tmpTempoComandos
+              + "ms.");
+    } catch (IOException ioex) {
+      System.err.println("Falha ao ler arquivo de comandos '" + fileName + "': " + ioex.getMessage());
+      clientSocket.close();
+      return;
     }
+    final int tempoComandos = tmpTempoComandos;
     // Flag para coordenar encerramento entre threads
     AtomicBoolean running = new AtomicBoolean(true);
 
@@ -146,51 +85,23 @@ public class ClientTeste {
     serverReader.setDaemon(true);
     serverReader.start();
 
-    // Thread para leitura do console (entrada manual do usuário)
-    Thread consoleSender = new Thread(() -> {
-      try {
-        System.out.print("> ");
-        String sentence;
-        while (running.get() && (sentence = inFromUser.readLine()) != null) {
-          if (sentence.equalsIgnoreCase("fim")) {
-            running.set(false);
-            break;
-          }
-          synchronized (outToServer) {
-            outToServer.writeBytes(sentence + "\n");
-            outToServer.flush();
-          }
-          System.out.print("> ");
-        }
-      } catch (IOException e) {
-        if (running.get()) {
-          System.err.println("Erro na entrada do usuário: " + e.getMessage());
-        }
-      } finally {
-        running.set(false);
-        try {
-          clientSocket.close();
-        } catch (IOException e) {
-          // Ignorar
-        }
-      }
-    }, "Console-Sender");
-    // Deixa como daemon para não travar encerramento se usuário não digitar mais
-    consoleSender.setDaemon(true);
-    consoleSender.start();
+    // Este cliente de teste apenas envia comandos programados a partir do arquivo
 
-    // Thread que envia cada comando do array a cada 5 segundos
+    // Thread que envia cada comando do array em intervalo fixo, sem aguardar
+    // respostas
     Thread sender = new Thread(() -> {
       try {
+        if (comandos == null) {
+          System.err.println("Nenhum comando carregado. Encerrando.");
+          return;
+        }
         for (String cmd : comandos) {
-          if (!running.get())
-            break;
           System.out.println("Enviando comando: " + cmd);
           synchronized (outToServer) {
             outToServer.writeBytes(cmd + "\n");
             outToServer.flush();
           }
-          // Aguarda 5 segundos antes do próximo comando
+          // Aguarda o intervalo antes do próximo comando
           try {
             Thread.sleep(tempoComandos);
           } catch (InterruptedException ie) {
@@ -199,12 +110,9 @@ public class ClientTeste {
           }
         }
       } catch (IOException e) {
-        if (running.get()) {
-          System.err.println("Erro ao enviar comando: " + e.getMessage());
-        }
+        System.err.println("Erro ao enviar comando: " + e.getMessage());
       } finally {
-        // Finaliza execução após enviar todos os comandos
-        running.set(false);
+        // Fecha o socket ao concluir/ocorrer erro
         try {
           clientSocket.close();
         } catch (IOException e) {

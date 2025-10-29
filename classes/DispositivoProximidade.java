@@ -1,7 +1,9 @@
 package classes;
 
 public class DispositivoProximidade implements IDetector {
-  private int num; // Identificador discriminante do dispositivo de um jogador (1 a numMaxDispositivos)
+  // Identificador discriminante do dispositivo de um jogador (1 a
+  // numMaxDispositivos)
+  private int num;
   private Posicao posicao;
   private int alcance;
   private Jogador jogadorDono;
@@ -31,7 +33,6 @@ public class DispositivoProximidade implements IDetector {
 
   // Método que recebe um jogador e calcula a distância, se
   // estiver dentro do alcance determinado retorna true
-
   public Boolean detectarJogador(Jogador jogador) {
     // Não detecta o jogador dono do dispositivo
     if (jogador == this.jogadorDono) {

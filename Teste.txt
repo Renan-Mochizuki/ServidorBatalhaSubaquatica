@@ -1,0 +1,64 @@
+100
+cadastrar a
+cadastrar b
+desafiar a a b
+desafiar b b a
+mover a a 1 1 1
+mover b b 1 1 1
+atacar a a 2 0 1
+cadastrar c
+desafiar c c a
+mover c c 1 1 1
+mover a a 1 0 1
+mover a a 0 1 1
+mover b b 1 0 1
+mover b b 0 1 1
+atacar b b 3 0 1
+atacar a a 2 0 1
+cadastrar d
+desafiar d d c
+mover d d 1 1 1
+desafiar c c d
+mover c c 1 0 1
+mover c c 0 1 1
+mover d d 1 0 1
+cadastrar e
+cadastrar f
+mover a a 1 0 1
+mover b b 1 0 1
+mover c c 1 0 1
+mover d d 1 0 1
+mover a a 1 0 1
+mover b b 1 0 1
+mover c c 1 0 1
+mover d d 1 0 1
+mover a a 1 0 1
+mover b b 1 0 1
+mover c c 1 0 1
+mover d d 1 0 1
+mover a a 1 0 1
+mover b b 1 0 1
+mover c c 1 0 1
+mover d d 1 0 1
+cadastrar g
+desafiar g g e
+desafiar e e f
+desafiar f f e
+mover e e 1 1 1
+mover f f 1 1 1
+mover g g 1 1 1
+mover a a 1 1 1
+mover b b 1 1 1
+atacar a a 5 0
+atacar b b 5 0
+mover c c 1 1 1
+mover d d 1 1 1
+mover e e 1 1 1
+mover e e 1 1 1
+mover f f 1 1 1
+mover g g 1 1 1
+mover a a 1 1 1
+mover b b 1 1 1
+mover c c 1 1 1
+mover d d 1 1 1
+mover e e 1 1 1
