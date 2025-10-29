@@ -8,6 +8,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import javax.swing.Timer;
+import java.io.*;
+import java.net.*;
+import java.util.function.Consumer;
 
 /**
  * Janela principal do jogo.
@@ -27,6 +30,10 @@ public class Jogo extends JFrame {
   private JPanel painelLista; // painel vertical com linhas (nome + botao)
   private JLabel infoJogadorLabel; // label com nome do jogador atual na barra superior
   private JTextArea mensagensArea; // área de mensagens na Home
+  private JTextField hostField; // host do servidor
+  private JTextField portField; // porta do servidor
+  private JLabel loginStatusLabel; // status na tela de login
+  private JButton loginButton; // botão de login para habilitar/desabilitar
 
   // --- Configurações / estado do tabuleiro ---
   private static final int BOARD_SIZE = 16;
@@ -41,6 +48,7 @@ public class Jogo extends JFrame {
 
   private boolean playerTurn = true; // controle de turno
   private JLabel turnoLabel; // label de status do turno
+  private ClientConnection connection; // conexão com servidor (opcional)
 
   private enum Modo {
     MOVER, ATACAR, SONAR
@@ -92,25 +100,54 @@ public class Jogo extends JFrame {
     JTextField campoNome = new JTextField();
     campoNome.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
 
-    JButton botao = new JButton("Entrar no jogo");
-    botao.setAlignmentX(Component.CENTER_ALIGNMENT);
-    botao.addActionListener((ActionEvent e) -> {
+    // Linha de servidor/porta
+    JPanel serverRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+    JLabel lblServidor = new JLabel("Servidor:");
+    hostField = new JTextField("localhost");
+    hostField.setPreferredSize(new Dimension(140, 28));
+    JLabel lblPorta = new JLabel("Porta:");
+    portField = new JTextField("9876");
+    portField.setPreferredSize(new Dimension(80, 28));
+    serverRow.add(lblServidor);
+    serverRow.add(hostField);
+    serverRow.add(lblPorta);
+    serverRow.add(portField);
+
+    // Status do login
+    loginStatusLabel = new JLabel(" ");
+    loginStatusLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+    loginStatusLabel.setForeground(new Color(120, 0, 0));
+
+    loginButton = new JButton("Entrar no jogo");
+    loginButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+    loginButton.addActionListener((ActionEvent e) -> {
       String nome = campoNome.getText();
       if (nome == null || nome.trim().isEmpty()) {
         JOptionPane.showMessageDialog(this, "Por favor, digite um nome válido.",
             "Nome obrigatório", JOptionPane.WARNING_MESSAGE);
         return;
       }
+      String host = hostField.getText().trim().isEmpty() ? "localhost" : hostField.getText().trim();
+      int porta;
+      try {
+        porta = Integer.parseInt(portField.getText().trim());
+      } catch (NumberFormatException ex) {
+        JOptionPane.showMessageDialog(this, "Porta inválida.", "Erro", JOptionPane.ERROR_MESSAGE);
+        return;
+      }
       jogadorAtual = nome.trim();
-      atualizarListaJogadores();
-      cardLayout.show(root, "home");
+      tentarConectarELogar(host, porta, jogadorAtual);
     });
 
     box.add(titulo);
     box.add(rotulo);
     box.add(campoNome);
+    box.add(Box.createVerticalStrut(8));
+    box.add(serverRow);
     box.add(Box.createVerticalStrut(12));
-    box.add(botao);
+    box.add(loginButton);
+    box.add(Box.createVerticalStrut(4));
+    box.add(loginStatusLabel);
 
     container.add(box);
     return container;
@@ -239,11 +276,19 @@ public class Jogo extends JFrame {
     JLabel label = new JLabel(nome);
     JButton botao = new JButton("Ação");
     botao.setEnabled(habilitarBotao);
-    botao.addActionListener(e -> JOptionPane.showMessageDialog(
-        this,
-        "Você clicou em '" + nome + "'",
-        "Ação",
-        JOptionPane.INFORMATION_MESSAGE));
+    botao.addActionListener(e -> {
+      // Integração: exemplo de envio de mensagem ao servidor quando clica em um
+      // jogador
+      if (connection != null && connection.isConnected()) {
+        connection.sendLine("INTERACT " + nome);
+      } else {
+        JOptionPane.showMessageDialog(
+            this,
+            "Sem conexão com o servidor (modo offline)",
+            "Ação",
+            JOptionPane.INFORMATION_MESSAGE);
+      }
+    });
 
     linha.add(label, BorderLayout.CENTER);
     linha.add(botao, BorderLayout.EAST);
@@ -361,6 +406,9 @@ public class Jogo extends JFrame {
         if (alcance(playerX, playerY, x, y) <= moveRange) {
           playerX = x;
           playerY = y;
+          if (connection != null && connection.isConnected()) {
+            connection.sendLine("MOVE " + x + " " + y);
+          }
           atualizarTabuleiro();
           fimDoTurnoDoJogador();
         } else {
@@ -370,6 +418,9 @@ public class Jogo extends JFrame {
       case ATACAR:
         if (alcance(playerX, playerY, x, y) <= attackRange) {
           atacado[y][x] = true;
+          if (connection != null && connection.isConnected()) {
+            connection.sendLine("ATTACK " + x + " " + y);
+          }
           atualizarTabuleiro();
           // Aqui poderia haver lógica de acerto/erro
           fimDoTurnoDoJogador();
@@ -379,9 +430,13 @@ public class Jogo extends JFrame {
         break;
       case SONAR:
         if (alcance(playerX, playerY, x, y) <= sonarRange) {
-          JOptionPane.showMessageDialog(this,
-              "Sonar ping em (" + x + ", " + y + ")",
-              "Sonar", JOptionPane.INFORMATION_MESSAGE);
+          if (connection != null && connection.isConnected()) {
+            connection.sendLine("SONAR " + x + " " + y);
+          } else {
+            JOptionPane.showMessageDialog(this,
+                "Sonar ping em (" + x + ", " + y + ")",
+                "Sonar", JOptionPane.INFORMATION_MESSAGE);
+          }
           fimDoTurnoDoJogador();
         } else {
           beepMsg("Fora do alcance do sonar.");
@@ -393,13 +448,20 @@ public class Jogo extends JFrame {
   private void fimDoTurnoDoJogador() {
     playerTurn = false;
     atualizarStatusTurno();
-    // turno do inimigo: espera 2s e devolve
-    Timer t = new Timer(2000, e -> {
-      playerTurn = true;
-      atualizarStatusTurno();
-    });
-    t.setRepeats(false);
-    t.start();
+    // Integração com servidor: informe fim do turno para o servidor decidir.
+    if (connection != null && connection.isConnected()) {
+      connection.sendLine("END_TURN");
+      // Aguarde mensagens do servidor; quando receber "TURN_PLAYER", reabilitará no
+      // handler.
+    } else {
+      // Offline: simula turno do inimigo por 2 segundos.
+      Timer t = new Timer(2000, e -> {
+        playerTurn = true;
+        atualizarStatusTurno();
+      });
+      t.setRepeats(false);
+      t.start();
+    }
   }
 
   private void atualizarStatusTurno() {
@@ -447,6 +509,169 @@ public class Jogo extends JFrame {
   private void beepMsg(String msg) {
     Toolkit.getDefaultToolkit().beep();
     JOptionPane.showMessageDialog(this, msg, "Aviso", JOptionPane.WARNING_MESSAGE);
+  }
+
+  // === Integração com servidor ===
+  private void tentarConectarELogar(String host, int port, String nome) {
+    loginButton.setEnabled(false);
+    loginStatusLabel.setForeground(new Color(0, 70, 120));
+    loginStatusLabel.setText("Conectando em " + host + ":" + port + "...");
+
+    SwingWorker<Void, Void> worker = new SwingWorker<>() {
+      private String erro;
+
+      @Override
+      protected Void doInBackground() {
+        try {
+          if (connection != null) {
+            try {
+              connection.close();
+            } catch (Exception ignore) {
+            }
+          }
+          connection = new ClientConnection(host, port);
+          connection.setOnMessage(Jogo.this::handleServerMessage);
+          connection.connect();
+
+          // Envia mensagem de login – ajuste o protocolo conforme seu servidor
+          connection.sendLine("LOGIN " + nome);
+        } catch (IOException ex) {
+          erro = ex.getMessage();
+        }
+        return null;
+      }
+
+      @Override
+      protected void done() {
+        if (erro != null) {
+          loginStatusLabel.setForeground(new Color(120, 0, 0));
+          loginStatusLabel.setText("Falha ao conectar: " + erro);
+          loginButton.setEnabled(true);
+        } else {
+          loginStatusLabel.setForeground(new Color(0, 120, 0));
+          loginStatusLabel.setText("Conectado. Aguardando resposta do servidor...");
+          // IMPORTANTE: a decisão de avançar para a outra tela OU mostrar erro
+          // fica no método handleServerMessage(), quando processarmos
+          // LOGIN_OK/LOGIN_FAIL.
+          // Isso evita travar a UI aguardando resposta.
+        }
+      }
+    };
+    worker.execute();
+  }
+
+  // Ponto central para tratar mensagens vindas do servidor
+  private void handleServerMessage(String line) {
+    if (line == null)
+      return;
+    // Garanta que atualizações de UI ocorram na EDT
+    SwingUtilities.invokeLater(() -> {
+      // Exemplos de protocolo – ajuste conforme o seu servidor
+      if (line.startsWith("LOGIN_OK")) {
+        // Decisão de avançar para HOME
+        atualizarListaJogadores();
+        cardLayout.show(root, "home");
+        loginButton.setEnabled(true);
+        loginStatusLabel.setText(" ");
+      } else if (line.startsWith("LOGIN_FAIL")) {
+        // Exemplo: LOGIN_FAIL Motivo do erro
+        String motivo = line.length() > 10 ? line.substring(10).trim() : "Cadastro não realizado";
+        loginStatusLabel.setForeground(new Color(120, 0, 0));
+        loginStatusLabel.setText(motivo);
+        JOptionPane.showMessageDialog(this, motivo, "Cadastro não realizado", JOptionPane.WARNING_MESSAGE);
+        loginButton.setEnabled(true);
+      } else if (line.startsWith("HOME_MSG ")) {
+        // Exemplo: HOME_MSG Ana: Olá!
+        if (mensagensArea != null) {
+          mensagensArea.append(line.substring(9) + "\n");
+          mensagensArea.setCaretPosition(mensagensArea.getDocument().getLength());
+        }
+      } else if (line.startsWith("ENEMY_ATTACK ")) {
+        // Exemplo: ENEMY_ATTACK x y
+        String[] p = line.split(" ");
+        if (p.length >= 3) {
+          try {
+            int x = Integer.parseInt(p[1]);
+            int y = Integer.parseInt(p[2]);
+            if (x >= 0 && x < BOARD_SIZE && y >= 0 && y < BOARD_SIZE) {
+              atacado[y][x] = true;
+              atualizarTabuleiro();
+            }
+          } catch (NumberFormatException ignored) {
+          }
+        }
+      } else if (line.equals("TURN_PLAYER")) {
+        // Servidor devolveu o turno ao jogador
+        playerTurn = true;
+        atualizarStatusTurno();
+      } else if (line.equals("TURN_ENEMY")) {
+        playerTurn = false;
+        atualizarStatusTurno();
+      }
+    });
+  }
+
+  // Cliente simples baseado em socket, com thread de leitura
+  private static class ClientConnection {
+    private final String host;
+    private final int port;
+    private Socket socket;
+    private BufferedReader in;
+    private PrintWriter out;
+    private Thread readerThread;
+    private volatile boolean running;
+    private Consumer<String> onMessage;
+
+    ClientConnection(String host, int port) {
+      this.host = host;
+      this.port = port;
+    }
+
+    void setOnMessage(Consumer<String> handler) {
+      this.onMessage = handler;
+    }
+
+    void connect() throws IOException {
+      socket = new Socket(host, port);
+      in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+      out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true);
+      running = true;
+      readerThread = new Thread(() -> {
+        try {
+          String line;
+          while (running && (line = in.readLine()) != null) {
+            if (onMessage != null)
+              onMessage.accept(line);
+          }
+        } catch (IOException ignored) {
+        } finally {
+          running = false;
+          try {
+            socket.close();
+          } catch (Exception ignore) {
+          }
+        }
+      }, "Server-Reader");
+      readerThread.setDaemon(true);
+      readerThread.start();
+    }
+
+    boolean isConnected() {
+      return socket != null && socket.isConnected() && !socket.isClosed();
+    }
+
+    synchronized void sendLine(String text) {
+      if (out != null) {
+        out.print(text + "\n");
+        out.flush();
+      }
+    }
+
+    void close() throws IOException {
+      running = false;
+      if (socket != null)
+        socket.close();
+    }
   }
 
   public static void main(String[] args) {
