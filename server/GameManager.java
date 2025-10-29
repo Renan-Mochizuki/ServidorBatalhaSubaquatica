@@ -89,13 +89,16 @@ public class GameManager {
   // Método que notifica todos os jogadores de uma partida com uma mensagem e um
   // valor passado
   public void notificarJogadoresPartida(JogoPartida jogoPartida, String mensagem, String valor) throws IOException {
-    // Percorre todos os clientes da partida e envia a mensagem
+    List<Jogador> jogadoresSnapshot;
     synchronized (jogoPartida) {
-      Iterator<Jogador> it = jogoPartida.getTodosJogadores().iterator();
-      while (it.hasNext()) {
-        Jogador jogador = it.next();
-        notificarJogadorPartida(jogador, mensagem, valor);
-      }
+      jogadoresSnapshot = new ArrayList<>(jogoPartida.getTodosJogadores());
+    }
+    // Percorre todos os clientes da partida e envia a mensagem fora do lock da
+    // partida
+    Iterator<Jogador> it = jogadoresSnapshot.iterator();
+    while (it.hasNext()) {
+      Jogador jogador = it.next();
+      notificarJogadorPartida(jogador, mensagem, valor);
     }
   }
 
@@ -173,10 +176,14 @@ public class GameManager {
 
     notificarJogadoresDetectados(jogoPartida);
 
-    // Avança para o próximo turno
-    jogoPartida.proximoTurno();
+    // Avança para o próximo turno e captura o jogador do turno de forma atômica
+    String jogadorTurno;
+    synchronized (jogoPartida) {
+      jogoPartida.proximoTurno();
+      jogadorTurno = jogoPartida.getJogadorTurno();
+    }
 
-    notificarJogadoresPartida(jogoPartida, "Turno do jogador", jogoPartida.getJogadorTurno());
+    notificarJogadoresPartida(jogoPartida, "Turno do jogador", jogadorTurno);
 
     jogoPartida.imprimirPartida();
   }
@@ -244,16 +251,21 @@ public class GameManager {
   // partidas em andamento
   public void finalizarJogoPartida(JogoPartida jogoPartida) {
     System.out.println("Partida finalizada: " + jogoPartida.getId());
-    // Vamos pegar todos os jogadores para definir eles com nenhuma partida
-    List<Jogador> todosJogadores = jogoPartida.getTodosJogadores();
-    Iterator<Jogador> it = todosJogadores.iterator();
-    while (it.hasNext()) {
-      Jogador jogador = it.next();
-      Cliente cliente = listaCliente.get(jogador.getNome());
-      cliente.setJogadorDesafiado(null);
-      cliente.setIdPartida(-1);
+    // Atualiza estado dos jogadores e finaliza a partida protegendo o estado da
+    // partida
+    synchronized (jogoPartida) {
+      List<Jogador> todosJogadores = jogoPartida.getTodosJogadores();
+      Iterator<Jogador> it = todosJogadores.iterator();
+      while (it.hasNext()) {
+        Jogador jogador = it.next();
+        Cliente cliente = listaCliente.get(jogador.getNome());
+        if (cliente != null) {
+          cliente.setJogadorDesafiado(null);
+          cliente.setIdPartida(-1);
+        }
+      }
+      jogoPartida.finalizarPartida();
     }
-    jogoPartida.finalizarPartida();
     jogoPartidas.remove(jogoPartida);
   }
 
@@ -416,7 +428,6 @@ public class GameManager {
       return;
     }
 
-    // Garante atomicidade por partida
     synchronized (partidaAndamento) {
       if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
         outToClient.writeBytes("0|Nao e o turno do jogador|\n");

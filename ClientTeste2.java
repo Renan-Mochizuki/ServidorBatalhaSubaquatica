@@ -2,7 +2,7 @@ import java.io.*;
 import java.net.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class ClientTeste {
+public class ClientTeste2 {
   static String comandos1[] = {
       "cadastrar a",
       "desafiar a a b",
@@ -67,47 +67,83 @@ public class ClientTeste {
   };
 
   static String comandos3[] = {
+      "cadastrar a",
       "cadastrar b",
+      "desafiar a a b",
       "desafiar b b a",
+      "mover a a 1 1 1",
       "mover b b 1 1 1",
+      "atacar a a 2 0 1",
+      "cadastrar c",
+      "desafiar c c a",
+      "mover c c 1 1 1",
+      "mover a a 1 0 1",
+      "mover a a 0 1 1",
+      "mover b b 1 0 1",
+      "mover b b 0 1 1",
+      "atacar b b 3 0 1",
+      "atacar a a 2 0 1",
+      "cadastrar d",
+      "desafiar d d c",
+      "mover d d 1 1 1",
+      "desafiar c c d",
+      "mover c c 1 0 1",
+      "mover c c 0 1 1",
+      "mover d d 1 0 1",
+      "cadastrar e",
+      "cadastrar f",
+      "mover a a 1 0 1",
+      "mover b b 1 0 1",
+      "mover c c 1 0 1",
+      "mover d d 1 0 1",
+      "mover a a 1 0 1",
+      "mover b b 1 0 1",
+      "mover c c 1 0 1",
+      "mover d d 1 0 1",
+      "mover a a 1 0 1",
+      "mover b b 1 0 1",
+      "mover c c 1 0 1",
+      "mover d d 1 0 1",
+      "mover a a 1 0 1",
+      "mover b b 1 0 1",
+      "mover c c 1 0 1",
+      "mover d d 1 0 1",
+      "cadastrar g",
+      "desafiar g g e",
+      "desafiar e e f",
+      "desafiar f f e",
+      "mover e e 1 1 1",
+      "mover f f 1 1 1",
+      "mover g g 1 1 1",
+      "mover a a 1 1 1",
       "mover b b 1 1 1",
+      "atacar a a 5 0",
+      "atacar b b 5 0",
+      "mover c c 1 1 1",
+      "mover d d 1 1 1",
+      "mover e e 1 1 1",
+      "mover e e 1 1 1",
+      "mover f f 1 1 1",
+      "mover g g 1 1 1",
+      "mover a a 1 1 1",
       "mover b b 1 1 1",
-      "mover b b 1 1 1",
-      "mover b b 1 1 1",
-      "mover b b 1 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
-      "mover b b 1 0 1",
-      "mover b b 0 1 1",
+      "mover c c 1 1 1",
+      "mover d d 1 1 1",
+      "mover e e 1 1 1",
   };
 
   static String comandos[];
 
   public static void main(String[] args) throws Exception {
-    int tempoComandos = 1000;
+    int tempoComandos = 200;
 
-    // Leitura do console para enviar comandos manuais
     BufferedReader inFromUser = new BufferedReader(new InputStreamReader(System.in));
 
     Socket clientSocket = new Socket("localhost", 9876);
     DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
     BufferedReader inFromServer = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
     String escolha = inFromUser.readLine();
-    
+
     switch (escolha) {
       case "a":
         comandos = comandos1;
@@ -119,7 +155,7 @@ public class ClientTeste {
       case "c":
         comandos = comandos3;
         break;
-    
+
       default:
         break;
     }
@@ -146,51 +182,24 @@ public class ClientTeste {
     serverReader.setDaemon(true);
     serverReader.start();
 
-    // Thread para leitura do console (entrada manual do usuário)
-    Thread consoleSender = new Thread(() -> {
-      try {
-        System.out.print("> ");
-        String sentence;
-        while (running.get() && (sentence = inFromUser.readLine()) != null) {
-          if (sentence.equalsIgnoreCase("fim")) {
-            running.set(false);
-            break;
-          }
-          synchronized (outToServer) {
-            outToServer.writeBytes(sentence + "\n");
-            outToServer.flush();
-          }
-          System.out.print("> ");
-        }
-      } catch (IOException e) {
-        if (running.get()) {
-          System.err.println("Erro na entrada do usuário: " + e.getMessage());
-        }
-      } finally {
-        running.set(false);
-        try {
-          clientSocket.close();
-        } catch (IOException e) {
-          // Ignorar
-        }
-      }
-    }, "Console-Sender");
-    // Deixa como daemon para não travar encerramento se usuário não digitar mais
-    consoleSender.setDaemon(true);
-    consoleSender.start();
+    // Removido o envio manual: este cliente de teste apenas envia comandos
+    // programados
 
-    // Thread que envia cada comando do array a cada 5 segundos
+    // Thread que envia cada comando do array em intervalo fixo, sem aguardar
+    // respostas
     Thread sender = new Thread(() -> {
       try {
+        if (comandos == null) {
+          System.err.println("Nenhum conjunto de comandos selecionado (digite a, b ou c). Encerrando.");
+          return;
+        }
         for (String cmd : comandos) {
-          if (!running.get())
-            break;
           System.out.println("Enviando comando: " + cmd);
           synchronized (outToServer) {
             outToServer.writeBytes(cmd + "\n");
             outToServer.flush();
           }
-          // Aguarda 5 segundos antes do próximo comando
+          // Aguarda o intervalo antes do próximo comando
           try {
             Thread.sleep(tempoComandos);
           } catch (InterruptedException ie) {
@@ -199,12 +208,9 @@ public class ClientTeste {
           }
         }
       } catch (IOException e) {
-        if (running.get()) {
-          System.err.println("Erro ao enviar comando: " + e.getMessage());
-        }
+        System.err.println("Erro ao enviar comando: " + e.getMessage());
       } finally {
-        // Finaliza execução após enviar todos os comandos
-        running.set(false);
+        // Fecha o socket ao concluir/ocorrer erro
         try {
           clientSocket.close();
         } catch (IOException e) {
