@@ -134,7 +134,6 @@ public class GameManager {
         if (!todosJogadoresDetectados.isEmpty()) {
           String valor = "num:" + dispositivo.getNum() + Constants.SEPARADORATRIBUTO + "jogadores:{"
               + todosJogadoresDetectados + "}";
-          System.out.println("Notificando jogador " + dispositivo.getJogadorDono().getNome() + " sobre jogadores detectados: " + todosJogadoresDetectados);
           notificarJogadorPartida(dispositivo.getJogadorDono(), Constants.TIPODETECTADO, "200",
               "Jogadores detectados pelo dispositivo " + dispositivo.getNum(), valor);
         }
