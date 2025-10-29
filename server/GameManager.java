@@ -719,6 +719,17 @@ public class GameManager {
     }
   }
 
+  public void sairCliente(Cliente cliente) {
+    String nomeCliente = cliente.getNome();
+    System.out.println("Cliente desconectado: " + nomeCliente);
+
+    sairPartidaCliente(cliente);
+
+    // Remove o cliente da lista de clientes
+    listaCliente.remove(nomeCliente);
+    cliente.enviarLinha("1|Cliente desconectado com sucesso|");
+  }
+
   // Método para enviar uma linha para o cliente evitando erros de conexão
   private void enviarLinha(DataOutputStream outToClient, String linha) {
     if (outToClient == null)

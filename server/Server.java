@@ -9,27 +9,25 @@ public class Server {
   // Até então eu havia feito toda a lógica dentro do ClientHandler sem se
   // preocupar com condições de corrida ou uma melhor separação de
   // responsabilidades essa classe tem o intuito de tentar melhorar isso
-  static GameManager gameManager = new GameManager();
-  static Map<String, String> tradutor = new HashMap<String, String>();
+  private final GameManager gameManager = new GameManager();
+  private final Map<String, String> tradutor = new HashMap<String, String>();
 
   // Declarando thread para lidar com cada cliente conectado
   // Como lidar com threads visto em:
   // https://www.geeksforgeeks.org/java/java-multithreading-tutorial
-  static class ClientHandler extends Thread {
+  class ClientHandler extends Thread {
     private Socket connectionSocket;
-    private GameManager gameManager;
 
     // Salvando o socket de conexão do cliente para podermos utilizar no run()
-    public ClientHandler(Socket socket, GameManager gameManager) {
+    public ClientHandler(Socket socket) {
       this.connectionSocket = socket;
-      this.gameManager = gameManager;
     }
 
     // Método que recebe um indice para verificar se foi informado algo para o campo
     // daquele indice
     // Se não foi informado, envia uma mensagem dizendo que nomeCampo não foi
     // informado ao cliente
-    static Boolean verificarCampo(String nomeCampo, int indice, String[] splitedSentence, DataOutputStream outToClient)
+    private Boolean verificarCampo(String nomeCampo, int indice, String[] splitedSentence, DataOutputStream outToClient)
         throws IOException {
       if (splitedSentence.length < indice + 1 || splitedSentence[indice].isEmpty()) {
         enviarLinha(outToClient, "0|" + nomeCampo + " nao informado|");
@@ -40,7 +38,7 @@ public class Server {
 
     // Método para validar se o cliente existe e se o token está correto, se estiver
     // correto, ele vai setar o socket de conexão do cliente novamente
-    static Boolean validarCliente(Cliente cliente, String tokenCliente, DataOutputStream outToClient,
+    private Boolean validarCliente(Cliente cliente, String tokenCliente, DataOutputStream outToClient,
         Socket connectionSocket) throws IOException {
       if (cliente == null) {
         enviarLinha(outToClient, "0|Cliente nao encontrado|");
@@ -58,7 +56,7 @@ public class Server {
     }
 
     // Método para enviar uma linha para o cliente evitando erros de conexão
-    static void enviarLinha(DataOutputStream outToClient, String linha) {
+    private void enviarLinha(DataOutputStream outToClient, String linha) {
       if (outToClient == null)
         return;
       try {
@@ -430,9 +428,7 @@ public class Server {
 
                 System.out.println("Removendo cliente: " + nomeCliente);
 
-                listaCliente.remove(nomeCliente);
-                // Responde sincronizado via Cliente para evitar interleaving com notificações
-                cliente.enviarLinha("1|Cliente desconectado com sucesso|");
+                gameManager.sairCliente(cliente);
 
                 // Sai do loop para fechar o socket
                 sair = true;
@@ -445,9 +441,7 @@ public class Server {
             }
           }
         }
-      } catch (
-
-      Exception e) {
+      } catch (Exception e) {
         e.printStackTrace();
       } finally {
         try {
@@ -461,7 +455,7 @@ public class Server {
   }
 
   // Método apenas para permitir o cliente enviar comandos com textos diferentes
-  public static void inicializarTradutor() {
+  public void inicializarTradutor() {
     tradutor.put("CADASTRO", "CADASTRAR");
     tradutor.put("DESAFIO", "DESAFIAR");
     tradutor.put("PRONTO", "PRONTOPARTIDA");
@@ -495,8 +489,9 @@ public class Server {
     System.out.println("Servidor iniciado na porta " + Constants.PORTA_SERVIDOR);
 
     try {
-      gameManager.criarPartidas();
-      inicializarTradutor();
+      Server server = new Server();
+      server.gameManager.criarPartidas();
+      server.inicializarTradutor();
 
       while (true) {
         // Aceite todas as conexões de entrada
@@ -506,7 +501,7 @@ public class Server {
             + connectionSocket.getPort());
 
         // Declarando um ClientHandler (thread) para cada conexão
-        ClientHandler clientHandler = new ClientHandler(connectionSocket, gameManager);
+        ClientHandler clientHandler = server.new ClientHandler(connectionSocket);
         clientHandler.start();
       }
     } catch (Exception e) {
