@@ -4,11 +4,16 @@ package classes;
 // (Java não suporta declarações de constantes fora de classes)
 public class Constants {
   public static final int PORTA_SERVIDOR = 9876;
-  public static final int NUMERO_PARTIDAS = 5;
   public static final int TAMANHO_TABULEIRO = 16;
   public static final int NUMERO_JOGADORES = 2;
   public static final int NUMERO_MAX_DISPOSITIVOS_JOGADOR = 4;
+  public static final int NUMERO_PARTIDAS = 5;
+  // Proximidade inicial dos jogadores no ínicio da partida (gerado aleatoriamente
+  // mas seguindo essa restrição)
   public static final int PROXIMIDADE_INICIAL_JOGADORES = 7;
+  // Se verdadeiro, jogadores em partidas em andamento não receberam mensagens
+  // globais
+  public static final boolean CHAT_GLOBAL_SOMENTE_LOBBY = true;
   // Modo: 0 para calculo de distância em formato quadrado, 1 para formato de
   // losango
   // Distância diz respeito a distância máxima permitida para o jogador realizar a

@@ -71,8 +71,9 @@ public class Server {
           while ((sentence = inFromClient.readLine()) != null) {
             // Separando a sentença nas palavras
             String splitedSentence[] = sentence.split(" ");
+            String comandoEnviado = splitedSentence[0].toUpperCase();
             // Switch para os comandos enviados pelo cliente
-            switch (splitedSentence[0].toUpperCase()) {
+            switch (comandoEnviado) {
               // CADASTRAR <nomeCliente>
               case "CADASTRAR": {
                 if (!verificarCampo("nome", 1, splitedSentence, outToClient))
@@ -143,6 +144,116 @@ public class Server {
                 }
 
                 gameManager.desafiarCliente(clienteDesafiante, clienteDesafiado);
+                break;
+              }
+              // ACEITARDESAFIO <nomeDesafiado> <token> <nomeDesafiante>
+              case "ACEITARDESAFIO": {
+                if (!verificarCampo("nomeDesafiado", 1, splitedSentence, outToClient) ||
+                    !verificarCampo("token", 2, splitedSentence, outToClient) ||
+                    !verificarCampo("nomeDesafiante", 3, splitedSentence, outToClient))
+                  break;
+                String nomeDesafiado = splitedSentence[1];
+                String tokenDesafiado = splitedSentence[2];
+                String nomeDesafiante = splitedSentence[3];
+
+                Cliente clienteDesafiado = listaCliente.get(nomeDesafiado);
+
+                if (!validarCliente(clienteDesafiado, tokenDesafiado, outToClient, connectionSocket))
+                  break;
+
+                Cliente clienteDesafiante = listaCliente.get(nomeDesafiante);
+                if (clienteDesafiante == null) {
+                  outToClient.writeBytes("0|Cliente desafiante nao encontrado|\n");
+                  break;
+                }
+
+                gameManager.aceitarDesafioCliente(clienteDesafiado, clienteDesafiante);
+                break;
+              }
+              // RECUSARDESAFIO <nomeDesafiado> <token> <nomeDesafiante>
+              case "RECUSARDESAFIO": {
+                if (!verificarCampo("nomeDesafiado", 1, splitedSentence, outToClient) ||
+                    !verificarCampo("token", 2, splitedSentence, outToClient) ||
+                    !verificarCampo("nomeDesafiante", 3, splitedSentence, outToClient))
+                  break;
+                String nomeDesafiado = splitedSentence[1];
+                String tokenDesafiado = splitedSentence[2];
+                String nomeDesafiante = splitedSentence[3];
+
+                Cliente clienteDesafiado = listaCliente.get(nomeDesafiado);
+
+                if (!validarCliente(clienteDesafiado, tokenDesafiado, outToClient, connectionSocket))
+                  break;
+
+                Cliente clienteDesafiante = listaCliente.get(nomeDesafiante);
+                if (clienteDesafiante == null) {
+                  outToClient.writeBytes("0|Cliente desafiante nao encontrado|\n");
+                  break;
+                }
+
+                gameManager.recusarDesafioCliente(clienteDesafiado, clienteDesafiante);
+                break;
+              }
+              // CHATGLOBAL <nome> <token> <mensagem>
+              case "CHATGLOBAL": {
+                if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
+                    !verificarCampo("token", 2, splitedSentence, outToClient) ||
+                    !verificarCampo("mensagem", 3, splitedSentence, outToClient))
+                  break;
+
+                String nomeCliente = splitedSentence[1];
+                String tokenCliente = splitedSentence[2];
+                // Juntando a mensagem novamente
+                String mensagem = String.join(" ", Arrays.copyOfRange(splitedSentence, 3, splitedSentence.length));
+
+                Cliente cliente = listaCliente.get(nomeCliente);
+
+                if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+                  break;
+
+                gameManager.chatGlobalCliente(cliente, mensagem);
+                break;
+              }
+              // CHATPARTIDA <nome> <token> <mensagem>
+              case "CHATPARTIDA": {
+                if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
+                    !verificarCampo("token", 2, splitedSentence, outToClient) ||
+                    !verificarCampo("mensagem", 3, splitedSentence, outToClient))
+                  break;
+
+                String nomeCliente = splitedSentence[1];
+                String tokenCliente = splitedSentence[2];
+                // Juntando a mensagem novamente
+                String mensagem = String.join(" ", Arrays.copyOfRange(splitedSentence, 3, splitedSentence.length));
+
+                Cliente cliente = listaCliente.get(nomeCliente);
+
+                if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+                  break;
+
+                gameManager.chatPartidaCliente(cliente, mensagem);
+                break;
+              }
+              // CHATJOGADOR <nome> <token> <nomeDestinatario> <mensagem>
+              case "CHATJOGADOR": {
+                if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
+                    !verificarCampo("token", 2, splitedSentence, outToClient) ||
+                    !verificarCampo("nomeDestinatario", 3, splitedSentence, outToClient) ||
+                    !verificarCampo("mensagem", 4, splitedSentence, outToClient))
+                  break;
+
+                String nomeCliente = splitedSentence[1];
+                String tokenCliente = splitedSentence[2];
+                String nomeDestinatario = splitedSentence[3];
+                // Juntando a mensagem novamente
+                String mensagem = String.join(" ", Arrays.copyOfRange(splitedSentence, 4, splitedSentence.length));
+
+                Cliente cliente = listaCliente.get(nomeCliente);
+
+                if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+                  break;
+
+                gameManager.chatJogadorCliente(cliente, nomeDestinatario, mensagem);
                 break;
               }
               // MOVER <nome> <token> <posicaoX> <posicaoY> <modoDeslocamento>

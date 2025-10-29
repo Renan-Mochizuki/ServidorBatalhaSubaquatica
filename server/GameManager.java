@@ -385,6 +385,14 @@ public class GameManager {
       return;
     }
 
+    // Verifica se o desafiado está em uma partida em andamento
+    int idPartidaDesafiado = clienteDesafiado.getIdPartida();
+    partidaAndamento = encontrarPartidaAndamento(idPartidaDesafiado);
+    if (partidaAndamento != null) {
+      clienteDesafiante.enviarLinha("0|O jogador desafiado esta em uma partida em andamento|");
+      return;
+    }
+
     // Se o destinatario não desafiou o remetente, então vamos apenas enviar o nosso
     // desafio para ele
     if (!nomeDesafiante.equals(clienteDesafiado.getJogadorDesafiado())) {
@@ -397,20 +405,125 @@ public class GameManager {
     }
 
     // Os dois jogadores se desafiaram, vamos iniciar a partida diretamente
+    aceitarDesafio(clienteDesafiante, clienteDesafiado);
+  }
 
+  public void aceitarDesafioCliente(Cliente clienteDesafiado, Cliente clienteDesafiante) {
+    String nomeDesafiante = clienteDesafiado.getNome();
+
+    // Se o destinatario não desafiou o remetente, então não há desafio para aceitar
+    if (!nomeDesafiante.equals(clienteDesafiante.getJogadorDesafiado())) {
+      clienteDesafiado.enviarLinha("0|Nao ha desafio desse jogador|");
+      return;
+    }
+
+    // Verifica se o desafiante está em uma partida em andamento
+    int idPartidaDesafiante = clienteDesafiado.getIdPartida();
+    JogoPartida partidaAndamento = encontrarPartidaAndamento(idPartidaDesafiante);
+    if (partidaAndamento != null) {
+      clienteDesafiado.enviarLinha("0|Nao e possivel aceitar desafio durante uma partida em andamento|");
+      return;
+    }
+    // Verifica se o desafiado está em uma partida em andamento
+    int idPartidaDesafiado = clienteDesafiante.getIdPartida();
+    partidaAndamento = encontrarPartidaAndamento(idPartidaDesafiado);
+    if (partidaAndamento != null) {
+      clienteDesafiado.enviarLinha("0|Nao e possivel aceitar desafio de um jogador em partida em andamento|");
+      return;
+    }
+
+    // Os dois jogadores se desafiaram, vamos iniciar a partida diretamente
+    aceitarDesafio(clienteDesafiado, clienteDesafiante);
+  }
+
+  public void aceitarDesafio(Cliente clienteDesafiado, Cliente clienteDesafiante) {
     // Criando a lista de clientes para a nova partida
     List<Cliente> clientes = new ArrayList<>();
-    clientes.add(clienteDesafiante);
     clientes.add(clienteDesafiado);
+    clientes.add(clienteDesafiante);
 
     int idPartida = proximoIdAutoIncrement();
 
-    clienteDesafiante.setIdPartida(idPartida);
     clienteDesafiado.setIdPartida(idPartida);
+    clienteDesafiante.setIdPartida(idPartida);
 
     JogoPartida novaPartida = new JogoPartida(idPartida, clientes, null);
 
     iniciarJogoPartida(novaPartida);
+  }
+
+  public void recusarDesafioCliente(Cliente clienteDesafiado, Cliente clienteDesafiante) {
+    String nomeDesafiado = clienteDesafiado.getNome();
+
+    // Se o destinatario não desafiou o remetente, então não há desafio para recusar
+    if (!nomeDesafiado.equals(clienteDesafiante.getJogadorDesafiado())) {
+      clienteDesafiado.enviarLinha("0|Nao ha desafio desse jogador|");
+      return;
+    }
+
+    // Remove o desafio
+    clienteDesafiante.setJogadorDesafiado(null);
+
+    // Notifica o desafiante que o desafio foi recusado
+    notificarJogadorPartida(clienteDesafiante, "Desafio recusado", nomeDesafiado);
+
+    clienteDesafiado.enviarLinha("1|Desafio recusado com sucesso|");
+  }
+
+  public void chatGlobalCliente(Cliente cliente, String mensagem) {
+    String nomeCliente = cliente.getNome();
+    String linhaChat = "1|Chat global|" + nomeCliente + ": " + mensagem;
+
+    // Percorre todos os clientes e envia a mensagem
+    synchronized (listaCliente) {
+      Iterator<Cliente> it = listaCliente.values().iterator();
+      while (it.hasNext()) {
+        Cliente clienteAtual = it.next();
+        JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
+        if (partidaAndamento != null && Constants.CHAT_GLOBAL_SOMENTE_LOBBY) {
+          continue;
+        }
+        clienteAtual.enviarLinha(linhaChat);
+      }
+    }
+  }
+
+  public void chatPartidaCliente(Cliente cliente, String mensagem) {
+    String nomeCliente = cliente.getNome();
+    JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
+    if (partidaAndamento == null) {
+      cliente.enviarLinha("0|Cliente nao esta em uma partida em andamento|");
+      return;
+    }
+
+    String linhaChat = "1|Chat da partida|" + nomeCliente + ": " + mensagem;
+
+    // Percorre todos os clientes da partida e envia a mensagem
+    List<Jogador> jogadoresSnapshot;
+    synchronized (partidaAndamento) {
+      jogadoresSnapshot = new ArrayList<>(partidaAndamento.getTodosJogadores());
+    }
+    Iterator<Jogador> it = jogadoresSnapshot.iterator();
+    while (it.hasNext()) {
+      Jogador jogador = it.next();
+      notificarJogadorPartida(jogador, "Chat da partida", nomeCliente + ": " + mensagem);
+    }
+  }
+
+  public void chatJogadorCliente(Cliente cliente, String nomeDestinatario, String mensagem) {
+    String nomeCliente = cliente.getNome();
+    Cliente clienteDestinatario = listaCliente.get(nomeDestinatario);
+    if (clienteDestinatario == null) {
+      cliente.enviarLinha("0|Jogador destinatario nao existe|");
+      return;
+    }
+
+    String linhaChat = "1|Chat privado|" + nomeCliente + ": " + mensagem;
+
+    // Envia a mensagem para o destinatário
+    clienteDestinatario.enviarLinha(linhaChat);
+    // Também envia o remetente para confirmação
+    cliente.enviarLinha(linhaChat);
   }
 
   public void moverCliente(Cliente cliente, int posicaoX, int posicaoY, Boolean deslocamento) {
