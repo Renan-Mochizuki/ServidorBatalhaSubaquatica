@@ -19,7 +19,7 @@ public class Posicao {
   }
 
   // Sets vão ser <default>
-  Boolean setX(int x) {
+  boolean setX(int x) {
     // Verifica se o valor está dentro dos limites do tabuleiro
     if (x < 0 || x >= Constants.TAMANHO_TABULEIRO) {
       return false;
@@ -28,7 +28,7 @@ public class Posicao {
     return true;
   }
 
-  Boolean setY(int y) {
+  boolean setY(int y) {
     // Verifica se o valor está dentro dos limites do tabuleiro
     if (y < 0 || y >= Constants.TAMANHO_TABULEIRO) {
       return false;
@@ -40,7 +40,7 @@ public class Posicao {
   // Método para calcular se a distância até uma posição destino está dentro do
   // deslocamento máximo permitido
   // retorna true se estiver dentro do limite, false caso contrário
-  Boolean distanciaPermitida(int xDestino, int yDestino, int deslocamentoMaximo, int modo) {
+  boolean distanciaPermitida(int xDestino, int yDestino, int deslocamentoMaximo, int modo) {
     int distanciaX = Math.abs(this.x - xDestino);
     int distanciaY = Math.abs(this.y - yDestino);
 

@@ -34,7 +34,7 @@ public class JogoPartida {
       int x1 = 0;
       int y1 = 0;
       // Variavel de controle do loop
-      Boolean posicaoValida = false;
+      boolean posicaoValida = false;
 
       // Código meio ineficiente para garantir que os jogadores não sejam posicionados
       // aleatóriamente um perto do outro de acordo com a constante
@@ -96,7 +96,7 @@ public class JogoPartida {
     return jogadorTurno;
   }
 
-  public Boolean setJogadorTurno(String jogadorTurno) {
+  public boolean setJogadorTurno(String jogadorTurno) {
     Jogador jogador = buscarJogadorPorNome(jogadorTurno);
     if (jogador != null) {
       this.jogadorTurno = jogadorTurno;
@@ -128,8 +128,8 @@ public class JogoPartida {
     }
   }
 
-  public Boolean todosJogadoresProntos() {
-    Boolean todosProntos = true;
+  public boolean todosJogadoresProntos() {
+    boolean todosProntos = true;
     Iterator<Jogador> iterator = this.jogadores.iterator();
     while (iterator.hasNext()) {
       Jogador j = iterator.next();
@@ -169,7 +169,7 @@ public class JogoPartida {
     return null;
   }
 
-  public Boolean movimento(String nomeJogador, int posicaoX, int posicaoY, Boolean deslocamento) {
+  public boolean movimento(String nomeJogador, int posicaoX, int posicaoY, boolean deslocamento) {
     Jogador jogador = buscarJogadorPorNome(nomeJogador);
     if (jogador == null) {
       return false;
@@ -182,7 +182,7 @@ public class JogoPartida {
     return jogador.mover(posicaoX, posicaoY);
   }
 
-  public Boolean ataque(String nomeJogador, int posicaoX, int posicaoY, Boolean deslocamento) {
+  public boolean ataque(String nomeJogador, int posicaoX, int posicaoY, boolean deslocamento) {
     Jogador atacante = buscarJogadorPorNome(nomeJogador);
     if (atacante == null) {
       return false;
@@ -227,7 +227,7 @@ public class JogoPartida {
     this.jogadoresMortos.add(jogador);
   }
 
-  public Boolean dispositivoProximidade(String nomeJogador, int posicaoX, int posicaoY, Boolean deslocamento) {
+  public boolean dispositivoProximidade(String nomeJogador, int posicaoX, int posicaoY, boolean deslocamento) {
     Jogador jogador = buscarJogadorPorNome(nomeJogador);
     if (jogador == null) {
       return false;
@@ -258,7 +258,7 @@ public class JogoPartida {
     return true;
   }
 
-  public Boolean verificarDispositivoProximidadeExistente(Jogador jogador, int posicaoX, int posicaoY) {
+  public boolean verificarDispositivoProximidadeExistente(Jogador jogador, int posicaoX, int posicaoY) {
     Iterator<DispositivoProximidade> iterator = this.dispositivos.iterator();
     while (iterator.hasNext()) {
       DispositivoProximidade d = iterator.next();

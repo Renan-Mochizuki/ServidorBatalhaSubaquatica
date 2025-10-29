@@ -14,7 +14,7 @@ public interface IDetector {
 
   // Método que recebe um jogador e calcula a distância, se
   // estiver dentro do alcance determinado retorna true
-  default Boolean detectarJogador(Jogador jogador) {
+  default boolean detectarJogador(Jogador jogador) {
     // Não detecta o jogador dono do dispositivo
     if (jogador == this.getJogadorDono()) {
       return false;

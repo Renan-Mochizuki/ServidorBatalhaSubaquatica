@@ -7,7 +7,7 @@ public class Partida {
   // (JogoPartida)
   private int id;
   private List<Cliente> clientes;
-  private Boolean andamento; // true para partida em andamento
+  private boolean andamento; // true para partida em andamento
 
   public Partida(int id) {
     this.id = id;
@@ -15,7 +15,7 @@ public class Partida {
     this.andamento = false;
   }
 
-  public Boolean adicionarCliente(Cliente cliente) {
+  public boolean adicionarCliente(Cliente cliente) {
     if (this.clientes.size() >= Constants.NUMERO_JOGADORES) {
       return false;
     }
@@ -23,7 +23,7 @@ public class Partida {
     return true;
   }
 
-  public Boolean removerCliente(Cliente cliente) {
+  public boolean removerCliente(Cliente cliente) {
     return this.clientes.remove(cliente);
   }
 
@@ -31,7 +31,7 @@ public class Partida {
     return this.id;
   }
 
-  public Boolean getAndamento() {
+  public boolean getAndamento() {
     return this.andamento;
   }
 
@@ -39,11 +39,11 @@ public class Partida {
     return "id:" + this.id + ",andamento:" + this.andamento + ",numjogadores:" + this.clientes.size();
   }
 
-  public Boolean partidaLotada() {
+  public boolean partidaLotada() {
     return this.clientes.size() >= Constants.NUMERO_JOGADORES;
   }
 
-  public Boolean iniciarPartida() {
+  public boolean iniciarPartida() {
     // Se ainda não houver clientes suficientes ou já está em andamento, não inicia
     // a partida
     if (this.clientes.size() < Constants.NUMERO_JOGADORES || this.andamento == true) {
@@ -58,7 +58,7 @@ public class Partida {
   }
 
   // Método default para ser acessado pela classe filha (JogoPartida)
-  void setAndamento(Boolean andamento) {
+  void setAndamento(boolean andamento) {
     this.andamento = andamento;
   }
 

@@ -22,7 +22,7 @@ public class Cliente {
     return this.nome;
   }
 
-  public Boolean validarToken(String token) {
+  public boolean validarToken(String token) {
     return this.token.equals(token);
   }
 

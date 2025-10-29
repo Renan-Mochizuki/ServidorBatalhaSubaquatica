@@ -244,7 +244,7 @@ public class GameManager {
 
   // Método que roda cada turno, se a partida terminou, notifica os jogadores e
   // chama outra função para finalizar a partida e remover da lista
-  public Boolean verificarFimJogoPartida(JogoPartida jogoPartida) {
+  public boolean verificarFimJogoPartida(JogoPartida jogoPartida) {
     Jogador vencedor = jogoPartida.verificarFimPartida();
     if (vencedor != null) {
       notificarJogadorPartida(vencedor, "Voce e o vencedor!", "");
@@ -569,7 +569,7 @@ public class GameManager {
     }
   }
 
-  public void moverCliente(Cliente cliente, int posicaoX, int posicaoY, Boolean deslocamento) {
+  public void moverCliente(Cliente cliente, int posicaoX, int posicaoY, boolean deslocamento) {
     String nomeCliente = cliente.getNome();
     JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
     if (partidaAndamento == null) {
@@ -593,7 +593,7 @@ public class GameManager {
     }
   }
 
-  public void atacarCliente(Cliente cliente, int posicaoX, int posicaoY, Boolean deslocamento) {
+  public void atacarCliente(Cliente cliente, int posicaoX, int posicaoY, boolean deslocamento) {
     String nomeCliente = cliente.getNome();
     JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
     if (partidaAndamento == null) {
@@ -617,7 +617,7 @@ public class GameManager {
     }
   }
 
-  public void sonarCliente(Cliente cliente, int posicaoX, int posicaoY, Boolean deslocamento) {
+  public void sonarCliente(Cliente cliente, int posicaoX, int posicaoY, boolean deslocamento) {
     String nomeCliente = cliente.getNome();
     JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
     if (partidaAndamento == null) {
@@ -663,22 +663,24 @@ public class GameManager {
     }
   }
 
-  private void sairPartida(Cliente cliente, Boolean enviarNotificacao) {
+  private void sairPartida(Cliente cliente, boolean enviarNotificacao) {
     String nomeCliente = cliente.getNome();
     cliente.setJogadorDesafiado(null);
 
     // Caso o cliente esteja em uma partida em andamento
     JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
     if (partidaAndamento != null) {
+      boolean avancarTurno = false;
       synchronized (partidaAndamento) {
         String turno = partidaAndamento.getJogadorTurno();
         partidaAndamento.removerJogador(partidaAndamento.buscarJogadorPorNome(nomeCliente));
-        if (turno.equals(nomeCliente)) {
-          proximoTurnoPartida(partidaAndamento);
-        }
+        avancarTurno = turno != null && turno.equals(nomeCliente);
         cliente.setIdPartida(-1);
-        if (enviarNotificacao)
-          cliente.enviarLinha("1|Saiu da partida|");
+      }
+      if (enviarNotificacao)
+        cliente.enviarLinha("1|Saiu da partida|");
+      if (avancarTurno) {
+        proximoTurnoPartida(partidaAndamento);
       }
       return;
     }
@@ -715,7 +717,9 @@ public class GameManager {
     // Fecha o socket deste cliente
     try {
       Socket connectionSocket = cliente.getConnectionSocket();
-      connectionSocket.close();
+      if (connectionSocket != null && !connectionSocket.isClosed()) {
+        connectionSocket.close();
+      }
     } catch (IOException e) {
       // ignora
     }
@@ -734,14 +738,18 @@ public class GameManager {
     final int turnoAgendado = jogoPartida.getNumTurno();
     ScheduledFuture<?> futuro = turnScheduler.schedule(() -> {
       try {
-        // Verifica se ainda estamos no mesmo turno
+        // Verifica se ainda estamos no mesmo turno e captura o jogador do turno
+        Jogador jogadorTurnoAtual;
+        String nomeJogadorTurno;
         synchronized (jogoPartida) {
           if (jogoPartida.getNumTurno() != turnoAgendado) {
             return; // já avançou por ação do jogador
           }
-          String nomeJogadorTurno = jogoPartida.getJogadorTurno();
-          Jogador jogadorTurno = jogoPartida.buscarJogadorPorNome(nomeJogadorTurno);
-          jogadorTurno.enviarLinha("0|Seu turno expirou|" + nomeJogadorTurno);
+          nomeJogadorTurno = jogoPartida.getJogadorTurno();
+          jogadorTurnoAtual = jogoPartida.buscarJogadorPorNome(nomeJogadorTurno);
+        }
+        if (jogadorTurnoAtual != null) {
+          notificarJogadorPartida(jogadorTurnoAtual, "Seu turno expirou", nomeJogadorTurno);
         }
         // Força avanço do turno (equivale a PASSAR)
         proximoTurnoPartida(jogoPartida);
