@@ -42,3 +42,6 @@ Criar executavel Cliente
 
 `javac --release 21 -d build -sourcepath . .\client\Client.java && jar cfe build\input\Client.jar client.Client -C build . && jpackage --input build\input --name Cliente --main-jar Client.jar --main-class Client --type app-image --win-console --dest build`
 
+
+Compilar jogo
+`javac -d build .\client\Jogo.java && java -cp build client.Jogo`

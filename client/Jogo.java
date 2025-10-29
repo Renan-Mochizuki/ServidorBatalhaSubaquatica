@@ -533,8 +533,8 @@ public class Jogo extends JFrame {
           connection.setOnMessage(Jogo.this::handleServerMessage);
           connection.connect();
 
-          // Envia mensagem de login – ajuste o protocolo conforme seu servidor
-          connection.sendLine("LOGIN " + nome);
+          // Envia mensagem de cadastro – ajuste o protocolo conforme seu servidor
+          connection.sendLine("CADASTRO " + nome);
         } catch (IOException ex) {
           erro = ex.getMessage();
         }
@@ -550,10 +550,7 @@ public class Jogo extends JFrame {
         } else {
           loginStatusLabel.setForeground(new Color(0, 120, 0));
           loginStatusLabel.setText("Conectado. Aguardando resposta do servidor...");
-          // IMPORTANTE: a decisão de avançar para a outra tela OU mostrar erro
-          // fica no método handleServerMessage(), quando processarmos
-          // LOGIN_OK/LOGIN_FAIL.
-          // Isso evita travar a UI aguardando resposta.
+
         }
       }
     };
@@ -566,20 +563,47 @@ public class Jogo extends JFrame {
       return;
     // Garanta que atualizações de UI ocorram na EDT
     SwingUtilities.invokeLater(() -> {
-      // Exemplos de protocolo – ajuste conforme o seu servidor
-      if (line.startsWith("LOGIN_OK")) {
-        // Decisão de avançar para HOME
-        atualizarListaJogadores();
-        cardLayout.show(root, "home");
-        loginButton.setEnabled(true);
-        loginStatusLabel.setText(" ");
+      // Tente interpretar no formato: COMANDO|CODIGO|TEXTO|VALORES
+      String[] parts = line.split("\\|", -1);
+      String comandoServer = parts.length > 0 ? parts[0] : "";
+      String codigoServer = parts.length > 1 ? parts[1] : "";
+      String textoServer = parts.length > 2 ? parts[2] : "";
+      // String valoresServer = parts.length > 3 ? parts[3] : ""; // reservado para
+      // futuros parâmetros
+
+      // 1) Fluxo de cadastro/login usando pipe
+      if ("CADASTRAR".equalsIgnoreCase(comandoServer)) {
+        if ("201".equals(codigoServer)) {
+          // Sucesso: avançar para HOME
+          atualizarListaJogadores();
+          cardLayout.show(root, "home");
+          if (loginButton != null)
+            loginButton.setEnabled(true);
+          if (loginStatusLabel != null)
+            loginStatusLabel.setText(" ");
+        } else {
+          // Falha: exibir textoServer (mensagem do backend) ou padrão
+          String motivo = (textoServer != null && !textoServer.isEmpty()) ? textoServer : "Cadastro não realizado";
+          if (loginStatusLabel != null) {
+            loginStatusLabel.setForeground(new Color(120, 0, 0));
+            loginStatusLabel.setText(motivo);
+          }
+          JOptionPane.showMessageDialog(this, motivo, "Cadastro não realizado", JOptionPane.WARNING_MESSAGE);
+          if (loginButton != null)
+            loginButton.setEnabled(true);
+        }
+
+        // 2) Compatibilidade com mensagens antigas baseadas em prefixos
       } else if (line.startsWith("LOGIN_FAIL")) {
         // Exemplo: LOGIN_FAIL Motivo do erro
         String motivo = line.length() > 10 ? line.substring(10).trim() : "Cadastro não realizado";
-        loginStatusLabel.setForeground(new Color(120, 0, 0));
-        loginStatusLabel.setText(motivo);
+        if (loginStatusLabel != null) {
+          loginStatusLabel.setForeground(new Color(120, 0, 0));
+          loginStatusLabel.setText(motivo);
+        }
         JOptionPane.showMessageDialog(this, motivo, "Cadastro não realizado", JOptionPane.WARNING_MESSAGE);
-        loginButton.setEnabled(true);
+        if (loginButton != null)
+          loginButton.setEnabled(true);
       } else if (line.startsWith("HOME_MSG ")) {
         // Exemplo: HOME_MSG Ana: Olá!
         if (mensagensArea != null) {
@@ -607,6 +631,12 @@ public class Jogo extends JFrame {
       } else if (line.equals("TURN_ENEMY")) {
         playerTurn = false;
         atualizarStatusTurno();
+      } else {
+        // fallback: logar mensagem crua na área de mensagens para debug
+        if (mensagensArea != null) {
+          mensagensArea.append(line + "\n");
+          mensagensArea.setCaretPosition(mensagensArea.getDocument().getLength());
+        }
       }
     });
   }
