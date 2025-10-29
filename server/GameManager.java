@@ -149,17 +149,11 @@ public class GameManager {
       jogoPartidas.add(novaPartida);
     }
 
-    System.out.println("Partida iniciada: " + novaPartida.getId());
+    System.out.println("Partida reservada: " + novaPartida.getId());
     novaPartida.imprimirPartida();
 
     // Devemos notificar os clientes dessa partida que a partida iniciou
-    notificarJogadoresPartida(novaPartida, "Partida iniciada", novaPartida.getId() + "");
-
-    String jogadorTurno;
-    synchronized (novaPartida) {
-      jogadorTurno = novaPartida.proximoTurno();
-    }
-    notificarJogadoresPartida(novaPartida, "Turno do jogador", jogadorTurno);
+    notificarJogadoresPartida(novaPartida, "Partida reservada", novaPartida.getId() + "");
   }
 
   // Método que passa para o próximo turno da partida e determina os
@@ -173,16 +167,20 @@ public class GameManager {
 
     notificarJogadoresDetectados(jogoPartida);
 
+    proximoTurno(jogoPartida);
+
+    jogoPartida.imprimirPartida();
+  }
+
+  // Método para avançar o turno e notificar os jogadores
+  public void proximoTurno(JogoPartida jogoPartida) {
     // Avança para o próximo turno e captura o jogador do turno de forma atômica
     String jogadorTurno;
     synchronized (jogoPartida) {
-      jogoPartida.proximoTurno();
-      jogadorTurno = jogoPartida.getJogadorTurno();
+      jogadorTurno = jogoPartida.proximoTurno();
     }
 
     notificarJogadoresPartida(jogoPartida, "Turno do jogador", jogadorTurno);
-
-    jogoPartida.imprimirPartida();
   }
 
   // Método que notifica o dono do dispositivo sobre os jogadores acertados por
@@ -496,8 +494,6 @@ public class GameManager {
       return;
     }
 
-    String linhaChat = "1|Chat da partida|" + nomeCliente + ": " + mensagem;
-
     // Percorre todos os clientes da partida e envia a mensagem
     List<Jogador> jogadoresSnapshot;
     synchronized (partidaAndamento) {
@@ -526,6 +522,23 @@ public class GameManager {
     cliente.enviarLinha(linhaChat);
   }
 
+  public void prontoPartidaCliente(Cliente cliente) {
+    int idPartida = cliente.getIdPartida();
+    JogoPartida partidaAndamento = encontrarPartidaAndamento(idPartida);
+    if (partidaAndamento == null) {
+      cliente.enviarLinha("0|Cliente nao esta em uma partida em andamento|");
+      return;
+    }
+    partidaAndamento.definirJogadorPronto(cliente.getNome());
+    cliente.enviarLinha("1|Jogador marcado como pronto|");
+    // Se todos jogadores estiverem prontos, notifica e avança o turno (define o
+    // primeiro turno)
+    if (partidaAndamento.todosJogadoresProntos()) {
+      notificarJogadoresPartida(partidaAndamento, "Todos jogadores prontos", "");
+      proximoTurno(partidaAndamento);
+    }
+  }
+
   public void moverCliente(Cliente cliente, int posicaoX, int posicaoY, Boolean deslocamento) {
     String nomeCliente = cliente.getNome();
     JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
@@ -535,7 +548,9 @@ public class GameManager {
     }
 
     synchronized (partidaAndamento) {
-      if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
+      if (!partidaAndamento.todosJogadoresProntos()) {
+        cliente.enviarLinha("0|Jogadores ainda nao prontos|");
+      } else if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
         cliente.enviarLinha("0|Nao e o turno do jogador|");
       } else if (!partidaAndamento.movimento(nomeCliente, posicaoX, posicaoY, deslocamento)) {
         cliente.enviarLinha("0|Movimento invalido|");
@@ -555,7 +570,9 @@ public class GameManager {
     }
 
     synchronized (partidaAndamento) {
-      if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
+      if (!partidaAndamento.todosJogadoresProntos()) {
+        cliente.enviarLinha("0|Jogadores ainda nao prontos|");
+      } else if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
         cliente.enviarLinha("0|Nao e o turno do jogador|");
       } else if (!partidaAndamento.ataque(nomeCliente, posicaoX, posicaoY, deslocamento)) {
         cliente.enviarLinha("0|Ataque invalido|");
@@ -576,8 +593,9 @@ public class GameManager {
     }
 
     synchronized (partidaAndamento) {
-      // Realiza a ação do dispositivo de proximidade dentro do lock da partida
-      if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
+      if (!partidaAndamento.todosJogadoresProntos()) {
+        cliente.enviarLinha("0|Jogadores ainda nao prontos|");
+      } else if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
         cliente.enviarLinha("0|Nao e o turno do jogador|");
       } else if (!partidaAndamento.dispositivoProximidade(nomeCliente, posicaoX, posicaoY, deslocamento)) {
         cliente.enviarLinha("0|Sonar invalido|");
@@ -598,7 +616,9 @@ public class GameManager {
     }
 
     synchronized (partidaAndamento) {
-      if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
+      if (!partidaAndamento.todosJogadoresProntos()) {
+        cliente.enviarLinha("0|Jogadores ainda nao prontos|");
+      } else if (!nomeCliente.equals(partidaAndamento.getJogadorTurno())) {
         cliente.enviarLinha("0|Nao e o turno do jogador|");
       } else {
         cliente.enviarLinha("1|Turno passado com sucesso|");

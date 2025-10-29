@@ -10,6 +10,7 @@ public class Server {
   // preocupar com condições de corrida ou uma melhor separação de
   // responsabilidades essa classe tem o intuito de tentar melhorar isso
   static GameManager gameManager = new GameManager();
+  static Map<String, String> tradutor = new HashMap<String, String>();
 
   // Declarando thread para lidar com cada cliente conectado
   // Como lidar com threads visto em:
@@ -72,6 +73,9 @@ public class Server {
             // Separando a sentença nas palavras
             String splitedSentence[] = sentence.split(" ");
             String comandoEnviado = splitedSentence[0].toUpperCase();
+            if (tradutor.containsKey(comandoEnviado)) {
+              comandoEnviado = tradutor.get(comandoEnviado);
+            }
             // Switch para os comandos enviados pelo cliente
             switch (comandoEnviado) {
               // CADASTRAR <nomeCliente>
@@ -256,6 +260,23 @@ public class Server {
                 gameManager.chatJogadorCliente(cliente, nomeDestinatario, mensagem);
                 break;
               }
+              // PRONTOPARTIDA <nome> <token>
+              case "PRONTOPARTIDA": {
+                if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
+                    !verificarCampo("token", 2, splitedSentence, outToClient))
+                  break;
+
+                String nomeCliente = splitedSentence[1];
+                String tokenCliente = splitedSentence[2];
+
+                Cliente cliente = listaCliente.get(nomeCliente);
+
+                if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
+                  break;
+
+                gameManager.prontoPartidaCliente(cliente);
+                break;
+              }
               // MOVER <nome> <token> <posicaoX> <posicaoY> <modoDeslocamento>
               case "MOVER": {
                 if (!verificarCampo("nome", 1, splitedSentence, outToClient) ||
@@ -421,6 +442,32 @@ public class Server {
 
   }
 
+  // Método apenas para permitir o cliente enviar comandos com textos diferentes
+  public static void inicializarTradutor() {
+    tradutor.put("CADASTRO", "CADASTRAR");
+    tradutor.put("DESAFIO", "DESAFIAR");
+    tradutor.put("MOVIMENTO", "MOVER");
+    tradutor.put("ATAQUE", "ATACAR");
+    tradutor.put("DISPOSITIVOPROXIMIDADE", "SONAR");
+    tradutor.put("PULAR", "PASSAR");
+    tradutor.put("REGISTER", "CADASTRAR");
+    tradutor.put("LISTGAMES", "LISTARPARTIDAS");
+    tradutor.put("LISTPLAYERS", "LISTARJOGADORES");
+    tradutor.put("JOINGAME", "ENTRARPARTIDA");
+    tradutor.put("CHALLENGE", "DESAFIAR");
+    tradutor.put("ACCEPTCHALLENGE", "ACEITARDESAFIO");
+    tradutor.put("REJECTCHALLENGE", "RECUSARDESAFIO");
+    tradutor.put("GLOBALCHAT", "CHATGLOBAL");
+    tradutor.put("GAMECHAT", "CHATPARTIDA");
+    tradutor.put("PLAYERCHAT", "CHATJOGADOR");
+    tradutor.put("MOVE", "MOVER");
+    tradutor.put("ATTACK", "ATACAR");
+    tradutor.put("SONAR", "SONAR");
+    tradutor.put("PASS", "PASSAR");
+    tradutor.put("LEAVEGAME", "SAIRPARTIDA");
+    tradutor.put("EXIT", "SAIR");
+  }
+
   public static void main(String[] args) throws Exception {
     // Declarando o socket do servidor
     // Código tirado dos slides
@@ -429,6 +476,7 @@ public class Server {
 
     try {
       gameManager.criarPartidas();
+      inicializarTradutor();
 
       while (true) {
         // Aceite todas as conexões de entrada

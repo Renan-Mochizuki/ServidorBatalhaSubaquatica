@@ -121,6 +121,26 @@ public class JogoPartida {
     return null;
   }
 
+  public void definirJogadorPronto(String nomeJogador) {
+    Jogador jogador = buscarJogadorPorNome(nomeJogador);
+    if (jogador != null) {
+      jogador.setPronto(true);
+    }
+  }
+
+  public Boolean todosJogadoresProntos() {
+    Boolean todosProntos = true;
+    Iterator<Jogador> iterator = this.jogadores.iterator();
+    while (iterator.hasNext()) {
+      Jogador j = iterator.next();
+      if (!j.getPronto()) {
+        todosProntos = false;
+        break;
+      }
+    }
+    return todosProntos;
+  }
+
   // Método para avançar o turno para o próximo jogador, se não houver jogador, o
   // primiero turno será do primeiro jogador da lista, usualmente, a pessoa que
   // foi desafiada

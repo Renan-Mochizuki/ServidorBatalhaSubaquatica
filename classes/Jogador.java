@@ -7,6 +7,7 @@ public class Jogador extends Cliente {
   private int numDispositivos;
   private int numMaxDispositivos;
   private int numMisseis;
+  private Boolean pronto;
 
   public Jogador(String nome, String token, Socket connectionSocket, int x, int y, int numMaxDispositivos) {
     super(nome, token, connectionSocket);
@@ -14,6 +15,7 @@ public class Jogador extends Cliente {
     this.numDispositivos = 0;
     this.numMaxDispositivos = numMaxDispositivos;
     this.numMisseis = 0;
+    this.pronto = false;
   }
 
   public Posicao getPosicao() {
@@ -30,6 +32,14 @@ public class Jogador extends Cliente {
 
   public int getNumMisseis() {
     return this.numMisseis;
+  }
+
+  public Boolean getPronto() {
+    return this.pronto;
+  }
+
+  public void setPronto(Boolean pronto) {
+    this.pronto = pronto;
   }
 
   // Método para mover o jogador de acordo com um deslocamento em X e Y
