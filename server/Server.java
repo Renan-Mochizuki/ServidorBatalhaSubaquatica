@@ -118,7 +118,7 @@ public class Server {
                   break;
                 }
 
-                gameManager.entrarPartidaCliente(cliente, idPartida, outToClient);
+                gameManager.entrarPartidaCliente(cliente, idPartida);
                 break;
               }
               // DESAFIAR <nomeDesafiante> <token> <nomeDesafiado>
@@ -142,7 +142,7 @@ public class Server {
                   break;
                 }
 
-                gameManager.desafiarCliente(clienteDesafiante, clienteDesafiado, outToClient);
+                gameManager.desafiarCliente(clienteDesafiante, clienteDesafiado);
                 break;
               }
               // MOVER <nome> <token> <posicaoX> <posicaoY> <modoDeslocamento>
@@ -171,7 +171,7 @@ public class Server {
                 if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
                   break;
 
-                gameManager.moverCliente(cliente, posicaoX, posicaoY, deslocamento, outToClient);
+                gameManager.moverCliente(cliente, posicaoX, posicaoY, deslocamento);
                 break;
               }
               // ATACAR <nome> <token> <posicaoX> <posicaoY> <modoDeslocamento>
@@ -200,7 +200,7 @@ public class Server {
                 if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
                   break;
 
-                gameManager.atacarCliente(cliente, posicaoX, posicaoY, deslocamento, outToClient);
+                gameManager.atacarCliente(cliente, posicaoX, posicaoY, deslocamento);
                 break;
               }
               // SONAR <nome> <token> <posicaoX> <posicaoY> <modoDeslocamento>
@@ -229,7 +229,7 @@ public class Server {
                 if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
                   break;
 
-                gameManager.sonarCliente(cliente, posicaoX, posicaoY, deslocamento, outToClient);
+                gameManager.sonarCliente(cliente, posicaoX, posicaoY, deslocamento);
                 break;
               }
               // PASSAR <nome> <token>
@@ -246,7 +246,7 @@ public class Server {
                 if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
                   break;
 
-                gameManager.passarCliente(cliente, outToClient);
+                gameManager.passarCliente(cliente);
                 break;
               }
               // SAIRPARTIDA <nome> <token>
@@ -263,7 +263,7 @@ public class Server {
                 if (!validarCliente(cliente, tokenCliente, outToClient, connectionSocket))
                   break;
 
-                gameManager.sairPartidaCliente(cliente, outToClient);
+                gameManager.sairPartidaCliente(cliente);
                 break;
               }
               // SAIR <nome> <token>
