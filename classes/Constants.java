@@ -12,7 +12,7 @@ public class Constants {
   public static final boolean KEEPALIVE = true; // Ativa ou desativa o keepalive
 
   // Quanto até um cliente ser desconectado pelo servidor
-  public static final int TEMPO_KEEPALIVE = 360; // em segundos
+  public static final int TEMPO_KEEPALIVE = 600; // em segundos
 
   // Proximidade inicial dos jogadores no ínicio da partida (gerado aleatoriamente
   // mas seguindo essa restrição)

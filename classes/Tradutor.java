@@ -32,6 +32,7 @@ public class Tradutor {
     tradutor.put("CADASTRO", "CADASTRAR");
     tradutor.put("DESAFIO", "DESAFIAR");
     tradutor.put("PRONTO", "PRONTOPARTIDA");
+    tradutor.put("CHAT", "CHATGLOBAL");
     tradutor.put("MOVIMENTO", "MOVER");
     tradutor.put("ATAQUE", "ATACAR");
     tradutor.put("MISSIL", "ATACAR");

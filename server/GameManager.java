@@ -326,6 +326,23 @@ public class GameManager {
     }
   }
 
+  private void notificarTodos(String tipo, String codigo, String mensagem, String valor) {
+    // Percorre todos os clientes da e envia a mensagem
+    List<Cliente> clientesSnapshot;
+    synchronized (listaCliente) {
+      clientesSnapshot = new ArrayList<>(listaCliente.values());
+    }
+    Iterator<Cliente> it = clientesSnapshot.iterator();
+    while (it.hasNext()) {
+      Cliente clienteAtual = it.next();
+      JogoPartida partidaAndamento = encontrarPartidaAndamento(clienteAtual.getIdPartida());
+      if (partidaAndamento != null && Constants.CHAT_GLOBAL_SOMENTE_LOBBY) {
+        continue;
+      }
+      clienteAtual.enviarLinha(tipo, codigo, mensagem, valor);
+    }
+  }
+
   //
   // MÉTODOS PARA AÇÕES DOS CLIENTES
   //
@@ -348,8 +365,13 @@ public class GameManager {
     // Criando um token para o cliente, o cliente receberá esse token e deve
     // utilizá-lo para garantir sua identidade, poderíamos gerar um hash a partir do
     // nome e um salt mas um randomUUID já garante a unicidade necessária
-    // String tokenCliente = UUID.randomUUID().toString();
-    String tokenCliente = nomeCliente.toLowerCase();
+    String tokenCliente;
+
+    if (nomeCliente.equalsIgnoreCase("teste")) {
+      tokenCliente = "teste";
+    } else {
+      tokenCliente = UUID.randomUUID().toString();
+    }
 
     Cliente novoCliente = new Cliente(nomeCliente, tokenCliente, connectionSocket);
     // Tenta adicionar o cliente na lista, esse método retorna o item anterior
@@ -365,6 +387,24 @@ public class GameManager {
       novoCliente.enviarLinha(tipo, "201", "Cadastrado com sucesso", "token:" + tokenCliente);
       // Inicia keepalive do cliente
       keepAliveCliente(novoCliente, tipo);
+
+      // Notifica todos os outros clientes sobre o novo cliente conectado
+      StringBuilder jogadoresServidor = new StringBuilder();
+
+      synchronized (listaCliente) {
+        Iterator<Cliente> it = listaCliente.values().iterator();
+        while (it.hasNext()) {
+          Cliente cliente = it.next();
+          if (jogadoresServidor.isEmpty()) {
+            jogadoresServidor.append("nome:" + cliente.getNome());
+            continue;
+          }
+          jogadoresServidor.append(Constants.SEPARADORITEM).append("nome:" + cliente.getNome());
+        }
+      }
+
+      notificarTodos(Constants.TIPOLISTARJOGADORES, "200", "Jogadores conectados",
+          "jogadores:{" + jogadoresServidor.toString() + "}");
     }
   }
 
@@ -394,10 +434,10 @@ public class GameManager {
       while (it.hasNext()) {
         Cliente cliente = it.next();
         if (jogadoresServidor.isEmpty()) {
-          jogadoresServidor.append(cliente.getNome());
+          jogadoresServidor.append("nome:" + cliente.getNome());
           continue;
         }
-        jogadoresServidor.append(Constants.SEPARADORITEM).append(cliente.getNome());
+        jogadoresServidor.append(Constants.SEPARADORITEM).append("nome:" + cliente.getNome());
       }
     }
 
@@ -484,7 +524,7 @@ public class GameManager {
 
       clienteDesafiante.setJogadorDesafiado(nomeDesafiado);
 
-      clienteDesafiante.enviarLinha(tipo, "201", "Desafio enviado com sucesso", "");
+      clienteDesafiante.enviarLinha(tipo, "201", "Desafio enviado com sucesso", "desafiado:" + nomeDesafiado);
       return;
     }
 
@@ -558,19 +598,8 @@ public class GameManager {
   public void chatGlobalCliente(Cliente cliente, String mensagem, String tipo) {
     String nomeCliente = cliente.getNome();
 
-    // Percorre todos os clientes e envia a mensagem
-    synchronized (listaCliente) {
-      Iterator<Cliente> it = listaCliente.values().iterator();
-      while (it.hasNext()) {
-        Cliente clienteAtual = it.next();
-        JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
-        if (partidaAndamento != null && Constants.CHAT_GLOBAL_SOMENTE_LOBBY) {
-          continue;
-        }
-        clienteAtual.enviarLinha(tipo, "200", "Mensagem global",
-            "nome:" + nomeCliente + Constants.SEPARADORATRIBUTO + "mensagem:" + mensagem);
-      }
-    }
+    notificarTodos(tipo, "200", "Mensagem global",
+        "nome:" + nomeCliente + Constants.SEPARADORATRIBUTO + "mensagem:" + mensagem);
   }
 
   public void chatPartidaCliente(Cliente cliente, String mensagem, String tipo) {
