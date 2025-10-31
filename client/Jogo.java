@@ -56,6 +56,12 @@ public class Jogo extends JFrame {
   private int attackRange = 3; // alcance de ataque configurável
   private int sonarRange = 4; // alcance do sonar configurável
 
+  // Marcações de sonar (permanentes) e contadores de uso do jogador
+  private boolean[][] sonarMarked = new boolean[BOARD_SIZE][BOARD_SIZE];
+  private int sonaresPlaced = 0; // quantos sonares este cliente já colocou (confirmados)
+  private int pendingSonares = 0; // requisições de sonar enviadas aguardando confirmação
+  private static final int MAX_SONARES = 4;
+
   private Boolean playerTurn = true; // controle de turno (null = aguardando/reservado)
   private JLabel turnoLabel; // label de status do turno
   private ClientConnection connection; // conexão com servidor (opcional)
@@ -486,11 +492,14 @@ public class Jogo extends JFrame {
     for (int y = 0; y < BOARD_SIZE; y++) {
       for (int x = 0; x < BOARD_SIZE; x++) {
         atacado[y][x] = false;
+        sonarMarked[y][x] = false;
       }
     }
     playerX = clamp(startX, 0, BOARD_SIZE - 1);
     playerY = clamp(startY, 0, BOARD_SIZE - 1);
     playerTurn = true;
+    sonaresPlaced = 0;
+    pendingSonares = 0;
     atualizarStatusTurno();
     atualizarTabuleiro();
   }
@@ -528,24 +537,36 @@ public class Jogo extends JFrame {
         break;
       case ATACAR:
         if (alcance(playerX, playerY, x, y) <= attackRange) {
-          atacado[y][x] = true;
+          // Não aplicar efeito local imediatamente — envie ao servidor e aguarde
+          // confirmação (mensagem "ATACAR") para desenhar o X temporário.
           if (connection != null && connection.isConnected()) {
             connection.sendLine("ATACAR " + jogadorAtual + " " + token + " " + x + " " + y);
+            fimDoTurnoDoJogador();
+          } else {
+            JOptionPane.showMessageDialog(this, "Sem conexão com o servidor. Conecte-se para jogar.",
+                "Sem conexão", JOptionPane.WARNING_MESSAGE);
           }
-          atualizarTabuleiro();
-          // Aqui poderia haver lógica de acerto/erro
-          fimDoTurnoDoJogador();
         } else {
           beepMsg("Fora do alcance de ataque.");
         }
         break;
       case SONAR:
         if (alcance(playerX, playerY, x, y) <= sonarRange) {
-          // Assume servidor está presente (ações offline removidas)
-          if (connection != null && connection.isConnected()) {
-            connection.sendLine("SONAR " + jogadorAtual + " " + token + " " + x + " " + y);
+          // Limite de sonares: soma de confirmados + pendentes
+          if (sonaresPlaced + pendingSonares >= MAX_SONARES) {
+            JOptionPane.showMessageDialog(this, "Limite de " + MAX_SONARES + " sonares atingido.", "Sonar",
+                JOptionPane.INFORMATION_MESSAGE);
+            break;
           }
-          fimDoTurnoDoJogador();
+          if (connection != null && connection.isConnected()) {
+            // marcaremos ao receber a confirmação do servidor (mensagem "SONAR").
+            pendingSonares++;
+            connection.sendLine("SONAR " + jogadorAtual + " " + token + " " + x + " " + y);
+            fimDoTurnoDoJogador();
+          } else {
+            JOptionPane.showMessageDialog(this, "Sem conexão com o servidor. Conecte-se para jogar.",
+                "Sem conexão", JOptionPane.WARNING_MESSAGE);
+          }
         } else {
           beepMsg("Fora do alcance do sonar.");
         }
@@ -554,19 +575,21 @@ public class Jogo extends JFrame {
   }
 
   private void fimDoTurnoDoJogador() {
-    playerTurn = false;
-    atualizarStatusTurno();
-    // Integração com servidor: informe fim do turno para o servidor decidir.
+    // When connected, notify server that we finished our turn and wait for the
+    // server to assign the next turn (server will send a TURNO message).
     if (connection != null && connection.isConnected()) {
-      connection.sendLine("END_TURN");
-      // Aguarde mensagens do servidor; quando receber "TURNO", o handler reabilitará.
+      atualizarStatusTurno();
+      // Inform server we passed/ended our turn. Server expects PASSAR <nome> <token>
+      try {
+        connection.sendLine("PASSAR " + jogadorAtual + " " + token);
+      } catch (Exception ignore) {
+      }
     } else {
-      // Sem servidor: não tentamos simular turno localmente. Bloqueamos a ação e
-      // indicamos ao usuário que é necessário estar conectado.
+      // No server: block actions and inform the user — cannot proceed offline.
+      playerTurn = false;
+      atualizarStatusTurno();
       JOptionPane.showMessageDialog(this, "Sem conexão com o servidor. Não é possível prosseguir.", "Erro",
           JOptionPane.ERROR_MESSAGE);
-      // Mantemos playerTurn = false para desabilitar ações até reconectar.
-      atualizarStatusTurno();
     }
   }
 
@@ -602,6 +625,9 @@ public class Jogo extends JFrame {
         } else if (atacado[y][x]) {
           b.setBackground(new Color(240, 120, 120)); // atacado
           b.setText("X");
+        } else if (sonarMarked[y][x]) {
+          b.setBackground(new Color(230, 230, 150)); // sonar
+          b.setText("S");
         } else {
           b.setBackground(Color.WHITE);
         }
@@ -1000,9 +1026,57 @@ public class Jogo extends JFrame {
           break;
         }
         case "ATACAR": {
+          // Servidor indica um ataque em (x,y). Marcamos temporariamente com X
+          String xStr = separarValores(valoresServer, "x");
+          String yStr = separarValores(valoresServer, "y");
+          int ax = 0, ay = 0;
+          try {
+            ax = Integer.parseInt(xStr == null ? "0" : xStr);
+          } catch (NumberFormatException ignore) {
+          }
+          try {
+            ay = Integer.parseInt(yStr == null ? "0" : yStr);
+          } catch (NumberFormatException ignore) {
+          }
+          if (ax >= 0 && ax < BOARD_SIZE && ay >= 0 && ay < BOARD_SIZE) {
+            atacado[ay][ax] = true;
+            atualizarTabuleiro();
+            // Remover a marcação após 3 segundos
+            final int fAx = ax;
+            final int fAy = ay;
+            Timer t = new Timer(3000, ev -> {
+              atacado[fAy][fAx] = false;
+              atualizarTabuleiro();
+            });
+            t.setRepeats(false);
+            t.start();
+          }
           break;
         }
         case "SONAR": {
+          // Servidor indica um sonar em (x,y). Sonar fica permanente.
+          String sonarBy = separarValores(valoresServer, "nome");
+          String sxStr = separarValores(valoresServer, "x");
+          String syStr = separarValores(valoresServer, "y");
+          int sx = 0, sy = 0;
+          try {
+            sx = Integer.parseInt(sxStr == null ? "0" : sxStr);
+          } catch (NumberFormatException ignore) {
+          }
+          try {
+            sy = Integer.parseInt(syStr == null ? "0" : syStr);
+          } catch (NumberFormatException ignore) {
+          }
+          if (sx >= 0 && sx < BOARD_SIZE && sy >= 0 && sy < BOARD_SIZE) {
+            sonarMarked[sy][sx] = true;
+            // Atualiza contadores: se o sonar for deste jogador, consumimos um pendente
+            if (sonarBy != null && sonarBy.equals(jogadorAtual)) {
+              if (pendingSonares > 0)
+                pendingSonares--;
+              sonaresPlaced++;
+            }
+            atualizarTabuleiro();
+          }
           break;
         }
         case "PASSAR": {
