@@ -56,7 +56,7 @@ public class Jogo extends JFrame {
   private int attackRange = 3; // alcance de ataque configurável
   private int sonarRange = 4; // alcance do sonar configurável
 
-  private boolean playerTurn = true; // controle de turno
+  private Boolean playerTurn = true; // controle de turno (null = aguardando/reservado)
   private JLabel turnoLabel; // label de status do turno
   private ClientConnection connection; // conexão com servidor (opcional)
 
@@ -65,9 +65,6 @@ public class Jogo extends JFrame {
   }
 
   private Modo modoAtual = Modo.MOVER;
-
-  // Controles de configuração do jogo
-  private JSpinner spStartX, spStartY, spMove, spAttack, spSonar;
 
   private String token;
 
@@ -499,19 +496,32 @@ public class Jogo extends JFrame {
   }
 
   private void onCellClick(int x, int y) {
-    if (!playerTurn)
-      return; // aguarda inimigo
+    // Se não houver conexão com o servidor, bloquear qualquer ação local.
+    if (connection == null || !connection.isConnected()) {
+      JOptionPane.showMessageDialog(this, "Sem conexão com o servidor. Conecte-se para jogar.", "Sem conexão",
+          JOptionPane.WARNING_MESSAGE);
+      return;
+    }
+
+    // Se o turno for nulo (reservado) ou não for o jogador atual, não permite ação
+    if (playerTurn == null || !playerTurn)
+      return; // aguarda inimigo ou reserva
 
     switch (modoAtual) {
       case MOVER:
         if (alcance(playerX, playerY, x, y) <= moveRange) {
-          playerX = x;
-          playerY = y;
+          // Não atualizar posição local aqui — enviamos ao servidor e esperamos a
+          // confirmação/atualização via mensagem MOVER do servidor.
           if (connection != null && connection.isConnected()) {
-            connection.sendLine("MOVE " + x + " " + y);
+            connection.sendLine("MOVER " + jogadorAtual + " " + token + " " + x + " " + y);
+            // Ainda encerramos o turno localmente: o servidor controlará a próxima
+            // reabilitação via mensagem "TURNO".
+            fimDoTurnoDoJogador();
+          } else {
+            // Conexão verificada antes, mas caso venha a ocorrer, bloqueia ação.
+            JOptionPane.showMessageDialog(this, "Sem conexão com o servidor. Conecte-se para jogar.",
+                "Sem conexão", JOptionPane.WARNING_MESSAGE);
           }
-          atualizarTabuleiro();
-          fimDoTurnoDoJogador();
         } else {
           beepMsg("Fora do alcance de movimento.");
         }
@@ -520,7 +530,7 @@ public class Jogo extends JFrame {
         if (alcance(playerX, playerY, x, y) <= attackRange) {
           atacado[y][x] = true;
           if (connection != null && connection.isConnected()) {
-            connection.sendLine("ATTACK " + x + " " + y);
+            connection.sendLine("ATACAR " + jogadorAtual + " " + token + " " + x + " " + y);
           }
           atualizarTabuleiro();
           // Aqui poderia haver lógica de acerto/erro
@@ -531,12 +541,9 @@ public class Jogo extends JFrame {
         break;
       case SONAR:
         if (alcance(playerX, playerY, x, y) <= sonarRange) {
+          // Assume servidor está presente (ações offline removidas)
           if (connection != null && connection.isConnected()) {
-            connection.sendLine("SONAR " + x + " " + y);
-          } else {
-            JOptionPane.showMessageDialog(this,
-                "Sonar ping em (" + x + ", " + y + ")",
-                "Sonar", JOptionPane.INFORMATION_MESSAGE);
+            connection.sendLine("SONAR " + jogadorAtual + " " + token + " " + x + " " + y);
           }
           fimDoTurnoDoJogador();
         } else {
@@ -552,25 +559,29 @@ public class Jogo extends JFrame {
     // Integração com servidor: informe fim do turno para o servidor decidir.
     if (connection != null && connection.isConnected()) {
       connection.sendLine("END_TURN");
-      // Aguarde mensagens do servidor; quando receber "TURN_PLAYER", reabilitará no
-      // handler.
+      // Aguarde mensagens do servidor; quando receber "TURNO", o handler reabilitará.
     } else {
-      // Offline: simula turno do inimigo por 2 segundos.
-      Timer t = new Timer(2000, e -> {
-        playerTurn = true;
-        atualizarStatusTurno();
-      });
-      t.setRepeats(false);
-      t.start();
+      // Sem servidor: não tentamos simular turno localmente. Bloqueamos a ação e
+      // indicamos ao usuário que é necessário estar conectado.
+      JOptionPane.showMessageDialog(this, "Sem conexão com o servidor. Não é possível prosseguir.", "Erro",
+          JOptionPane.ERROR_MESSAGE);
+      // Mantemos playerTurn = false para desabilitar ações até reconectar.
+      atualizarStatusTurno();
     }
   }
 
   private void atualizarStatusTurno() {
     if (turnoLabel != null) {
-      turnoLabel.setText(playerTurn ? "Turno: Jogador" : "Turno: Inimigo...");
+      String texto;
+      if (playerTurn == null) {
+        texto = "Turno: aguardando...";
+      } else {
+        texto = playerTurn ? "Turno: Jogador" : "Turno: Inimigo...";
+      }
+      turnoLabel.setText(texto);
     }
     // Opcional: desabilitar o tabuleiro quando não é o turno do jogador
-    boolean enabled = playerTurn;
+    boolean enabled = Boolean.TRUE.equals(playerTurn);
     for (int y = 0; y < BOARD_SIZE; y++) {
       for (int x = 0; x < BOARD_SIZE; x++) {
         if (boardButtons[y][x] != null)
@@ -931,12 +942,61 @@ public class Jogo extends JFrame {
           break;
         }
         case "RESERVADOPARTIDA": {
+          // O servidor reservou a partida e fornece coordenadas iniciais (x, y).
+          String xStr = separarValores(valoresServer, "x");
+          String yStr = separarValores(valoresServer, "y");
+          int rx = 0, ry = 0;
+          try {
+            rx = Integer.parseInt(xStr == null ? "0" : xStr);
+          } catch (NumberFormatException ignore) {
+          }
+          try {
+            ry = Integer.parseInt(yStr == null ? "0" : yStr);
+          } catch (NumberFormatException ignore) {
+          }
+
+          // Reinicia estado básico do tabuleiro (posicional)
+          iniciarPartida();
+          // Posiciona jogador conforme informado pelo servidor
+          playerX = clamp(rx, 0, BOARD_SIZE - 1);
+          playerY = clamp(ry, 0, BOARD_SIZE - 1);
+          // Turno ainda indefinido até o servidor enviar TURNO
+          playerTurn = null;
+          atualizarStatusTurno();
+          atualizarTabuleiro();
+
+          // Mostra a tela do jogo
+          cardLayout.show(root, "game");
+
+          // Depois de carregar a tela, notifica o servidor que estamos prontos
+          if (connection != null && connection.isConnected()) {
+            connection.sendLine("PRONTO " + jogadorAtual + " " + token);
+          }
           break;
         }
         case "INICIOPARTIDA": {
           break;
         }
         case "MOVER": {
+          // Servidor informa movimento (x,y) — aplicamos localmente quando a
+          // mensagem indica que o movimento é do próprio jogador.
+          String moverNome = separarValores(valoresServer, "nome");
+          String xStr = separarValores(valoresServer, "x");
+          String yStr = separarValores(valoresServer, "y");
+          int mx = 0, my = 0;
+          try {
+            mx = Integer.parseInt(xStr == null ? "0" : xStr);
+          } catch (NumberFormatException ignore) {
+          }
+          try {
+            my = Integer.parseInt(yStr == null ? "0" : yStr);
+          } catch (NumberFormatException ignore) {
+          }
+          if (moverNome != null && moverNome.equals(jogadorAtual)) {
+            playerX = clamp(mx, 0, BOARD_SIZE - 1);
+            playerY = clamp(my, 0, BOARD_SIZE - 1);
+            atualizarTabuleiro();
+          }
           break;
         }
         case "ATACAR": {
@@ -970,6 +1030,12 @@ public class Jogo extends JFrame {
           break;
         }
         case "TURNO": {
+          if ("200".equals(codigoServer)) {
+            String nomeJogadorTurno = separarValores(valoresServer, "turno");
+            boolean isPlayerTurn = jogadorAtual != null && jogadorAtual.equals(nomeJogadorTurno);
+            playerTurn = isPlayerTurn;
+            atualizarStatusTurno();
+          }
           break;
         }
         case "ERRO": {
@@ -1011,26 +1077,6 @@ public class Jogo extends JFrame {
         default: {
           break;
         }
-
-        // } else if ("JOGO".equalsIgnoreCase(comandoServer) &&
-        // "START".equalsIgnoreCase(codigoServer)) {
-        // // Iniciar a partida e ir para tela de jogo
-        // iniciarPartida();
-        // cardLayout.show(root, "game");
-        // } else if (line.equals("TURN_PLAYER")) {
-        // // Servidor devolveu o turno ao jogador
-        // playerTurn = true;
-        // atualizarStatusTurno();
-        // } else if (line.equals("TURN_ENEMY")) {
-        // playerTurn = false;
-        // atualizarStatusTurno();
-        // } else {
-        // // fallback: logar mensagem crua na área de mensagens para debug
-        // if (mensagensArea != null) {
-        // mensagensArea.append("Servidor: " + line + "\n");
-        // mensagensArea.setCaretPosition(mensagensArea.getDocument().getLength());
-        // }
-        // }
       }
     });
   }

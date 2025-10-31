@@ -703,7 +703,12 @@ public class GameManager {
         cliente.enviarLinha(tipo, "400", "Ataque invalido",
             "campo:[posicaoX" + Constants.SEPARADORATRIBUTO + "posicaoY]");
       } else {
-        cliente.enviarLinha(tipo, "200", "Ataque realizado com sucesso", "");
+        if (deslocamento) {
+          Jogador jogador = partidaAndamento.buscarJogadorPorNome(nomeCliente);
+          posicaoX = jogador.getPosicao().getX();
+          posicaoY = jogador.getPosicao().getY();
+        }
+        cliente.enviarLinha(tipo, "200", "Ataque realizado com sucesso", "x:" + posicaoX + ",y:" + posicaoY);
         // Avança para o próximo turno
         cancelarTimerTurno(partidaAndamento);
         proximoTurnoPartida(partidaAndamento);
@@ -728,7 +733,13 @@ public class GameManager {
         cliente.enviarLinha(tipo, "400", "Sonar invalido",
             "campo:[posicaoX" + Constants.SEPARADORATRIBUTO + "posicaoY]");
       } else {
-        cliente.enviarLinha(tipo, "200", "Sonar utilizado com sucesso", "");
+        
+        if (deslocamento) {
+          Jogador jogador = partidaAndamento.buscarJogadorPorNome(nomeCliente);
+          posicaoX = jogador.getPosicao().getX();
+          posicaoY = jogador.getPosicao().getY();
+        }
+        cliente.enviarLinha(tipo, "200", "Sonar utilizado com sucesso", "x:" + posicaoX + ",y:" + posicaoY);
         // Avança para o próximo turno
         cancelarTimerTurno(partidaAndamento);
         proximoTurnoPartida(partidaAndamento);
