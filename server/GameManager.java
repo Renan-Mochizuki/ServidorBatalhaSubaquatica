@@ -165,15 +165,27 @@ public class GameManager {
       jogoPartidas.add(novaPartida);
     }
 
+    String todosJogadores = "";
     System.out.println("Partida reservada: " + novaPartida.getId());
 
     // Devemos notificar os clientes dessa partida que a partida foi reservada
     // Vamos informar também suas posições
     Iterator<Jogador> itJogadores = novaPartida.getJogadores().iterator();
+
+    while (itJogadores.hasNext()) {
+      Jogador jogador = itJogadores.next();
+      if (!todosJogadores.isEmpty()) {
+        todosJogadores += Constants.SEPARADORITEM;
+      }
+      todosJogadores += "nome:" + jogador.getNome();
+    }
+    String valorTodos = "jogadores:{" + todosJogadores + "}";
+    itJogadores = novaPartida.getJogadores().iterator();
     while (itJogadores.hasNext()) {
       Jogador jogador = itJogadores.next();
       Posicao posicao = jogador.getPosicao();
-      String valor = "x:" + posicao.getX() + Constants.SEPARADORATRIBUTO + "y:" + posicao.getY();
+      String valor = "x:" + posicao.getX() + Constants.SEPARADORATRIBUTO + "y:" + posicao.getY()
+          + Constants.SEPARADORATRIBUTO + valorTodos;
       notificarJogadorPartida(jogador, Constants.TIPORESERVADOPARTIDA, "200", "Partida reservada", valor);
     }
   }
