@@ -29,6 +29,8 @@ public class Jogo extends JFrame {
   private JPanel painelLista; // painel vertical com linhas (nome + botao)
   private JLabel infoJogadorLabel; // label com nome do jogador atual na barra superior
   private JTextArea mensagensArea; // área de mensagens na Home
+  // Map de botões por jogador para controlar estado de "Enviado"
+  private java.util.Map<String, JButton> playerButtons = new java.util.HashMap<>();
   private JTextField hostField; // host do servidor
   private JTextField portField; // porta do servidor
   private JLabel loginStatusLabel; // status na tela de login
@@ -36,6 +38,12 @@ public class Jogo extends JFrame {
   // Chat input na Home
   private JTextField chatInputField;
   private JButton chatSendButton;
+  // Qual jogador recebeu o desafio (estado local de "Enviado")
+  private String desafioEnviadoPara = null;
+  // Container para desafios recebidos
+  private JPanel incomingChallengesPanel;
+  // Linha que mostra desafio enviado (aparecerá na mesma caixa de desafios)
+  private JPanel outgoingChallengeRow = null;
 
   // --- Configurações / estado do tabuleiro ---
   private static final int BOARD_SIZE = 16;
@@ -165,15 +173,45 @@ public class Jogo extends JFrame {
   private JPanel criarTelaHome() {
     JPanel home = new JPanel(new BorderLayout());
 
+    // Criar painel de incoming challenges antes do painel central para que
+    // possamos inseri-lo no topo da área central.
+    incomingChallengesPanel = new JPanel();
+    incomingChallengesPanel.setLayout(new BoxLayout(incomingChallengesPanel, BoxLayout.Y_AXIS));
+
+    JPanel leftTopBox = new JPanel();
+    leftTopBox.setLayout(new BoxLayout(leftTopBox, BoxLayout.Y_AXIS));
+    leftTopBox.setBorder(BorderFactory.createCompoundBorder(
+        BorderFactory.createLineBorder(new Color(220, 220, 220)),
+        new EmptyBorder(4, 4, 4, 4)));
+    // alinhar a caixa inteira à esquerda dentro do BoxLayout do centro
+    leftTopBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+    // Forçar largura fixa para que a caixa não redimensione conforme o conteúdo.
+    // Mantemos uma pequena margem lateral porque o painel central tem borda.
+    Dimension fixedSize = new Dimension(700, 160);
+    leftTopBox.setPreferredSize(fixedSize);
+    leftTopBox.setMaximumSize(new Dimension(fixedSize.width, 10000));
+    leftTopBox.setMinimumSize(new Dimension(fixedSize.width, 40));
+    JLabel incomingTitle = new JLabel("Desafios recebidos");
+    incomingTitle.setFont(incomingTitle.getFont().deriveFont(Font.BOLD, 12f));
+    // alinhar texto à esquerda dentro do BoxLayout
+    incomingTitle.setAlignmentX(Component.LEFT_ALIGNMENT);
+    leftTopBox.add(incomingTitle);
+    leftTopBox.add(Box.createVerticalStrut(6));
+    incomingChallengesPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+    leftTopBox.add(incomingChallengesPanel);
+
     // Área central (placeholder para o tabuleiro/ação do jogo)
     JPanel centro = new JPanel();
     centro.setLayout(new BoxLayout(centro, BoxLayout.Y_AXIS));
-    centro.setBorder(new EmptyBorder(24, 24, 24, 24));
+    // reduzir o espaçamento à esquerda do painel central para diminuir margem
+    centro.setBorder(new EmptyBorder(24, 6, 24, 24));
 
     JLabel placeholder = new JLabel("Área do jogo (Home)");
     placeholder.setAlignmentX(Component.CENTER_ALIGNMENT);
     placeholder.setFont(placeholder.getFont().deriveFont(Font.PLAIN, 18f));
     placeholder.setForeground(new Color(70, 70, 70));
+    // Adiciona a caixa de desafios recebidos acima do conteúdo central
+    centro.add(leftTopBox);
 
     JButton irParaJogo = new JButton("Ir para o jogo");
     irParaJogo.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -210,6 +248,10 @@ public class Jogo extends JFrame {
     northBar.add(titulo, BorderLayout.WEST);
     northBar.add(btnAtualizar, BorderLayout.EAST);
 
+    // painelLista (direita) keeps only the northBar at its top now
+    JPanel topContainer = new JPanel(new BorderLayout());
+    topContainer.add(northBar, BorderLayout.CENTER);
+
     painelLista = new JPanel();
     painelLista.setLayout(new BoxLayout(painelLista, BoxLayout.Y_AXIS));
     JScrollPane scroll = new JScrollPane(painelLista,
@@ -217,14 +259,23 @@ public class Jogo extends JFrame {
         ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
     scroll.getVerticalScrollBar().setUnitIncrement(16);
 
-    direita.add(northBar, BorderLayout.NORTH);
+    direita.add(topContainer, BorderLayout.NORTH);
     direita.add(scroll, BorderLayout.CENTER);
 
-    // Barra superior com info do jogador atual
+    // Barra superior com info do jogador atual e leftTopBox ao lado esquerdo
     JPanel topo = new JPanel(new BorderLayout());
     topo.setBorder(new EmptyBorder(8, 12, 8, 12));
     infoJogadorLabel = new JLabel("");
-    topo.add(infoJogadorLabel, BorderLayout.WEST);
+    // Aumenta um pouco a fonte para melhor visibilidade
+    infoJogadorLabel.setFont(infoJogadorLabel.getFont().deriveFont(Font.BOLD, 13f));
+    topo.add(infoJogadorLabel, BorderLayout.CENTER);
+
+    // northContainer coloca o leftTopBox à esquerda e o topo (infoJogadorLabel)
+    // no centro — isso cria a nova "box" no canto superior esquerdo da Home.
+    JPanel northContainer = new JPanel(new BorderLayout());
+    // colocar apenas o topo (infoJogadorLabel) no northContainer; a leftTopBox
+    // será mostrada dentro do painel central acima do conteúdo de Home.
+    northContainer.add(topo, BorderLayout.CENTER);
 
     // Caixa de mensagens na parte inferior
     JPanel mensagensPanel = new JPanel(new BorderLayout());
@@ -253,7 +304,7 @@ public class Jogo extends JFrame {
     chatRow.add(chatSendButton, BorderLayout.EAST);
     mensagensPanel.add(chatRow, BorderLayout.SOUTH);
 
-    home.add(topo, BorderLayout.NORTH);
+    home.add(northContainer, BorderLayout.NORTH);
     home.add(centro, BorderLayout.CENTER);
     home.add(direita, BorderLayout.EAST);
     home.add(mensagensPanel, BorderLayout.SOUTH);
@@ -274,7 +325,9 @@ public class Jogo extends JFrame {
     if (infoJogadorLabel != null) {
       infoJogadorLabel.setText(jogadorAtual == null ? "" : ("Jogador: " + jogadorAtual));
     }
+    // rebuild lista de jogadores: limpa referências antigas e recria
     painelLista.removeAll();
+    playerButtons.clear();
 
     // Atualiza caixa de mensagens da Home
     // Preserva as mensagens existentes (antes este método limpava a área de
@@ -307,20 +360,63 @@ public class Jogo extends JFrame {
         BorderFactory.createLineBorder(new Color(220, 225, 235)),
         new EmptyBorder(8, 8, 8, 8)));
     JLabel label = new JLabel(nome);
-    JButton botao = new JButton("Ação");
+    JButton botao = new JButton("Desafiar");
     botao.setEnabled(habilitarBotao);
+    // armazena o botão para poder controlar o estado "Enviado"
+    if (habilitarBotao) {
+      playerButtons.put(nome, botao);
+      // Ajusta o texto caso já exista um desafio enviado para este jogador
+      if (nome.equals(desafioEnviadoPara)) {
+        botao.setText("Enviado");
+        botao.setEnabled(true);
+      }
+    }
+
     botao.addActionListener(e -> {
-      // Enviar mensagem para o servidor ao clicar no jogador (ex.: convidar/desafiar)
-      if (connection != null && connection.isConnected()) {
-        // Protocolo no formato pipe: INTERACT|<nome>
-        connection.sendLine("INTERACT|" + nome);
-      } else {
+      // Se não estiver conectado, avisa
+      if (connection == null || !connection.isConnected()) {
         JOptionPane.showMessageDialog(
             this,
             "Sem conexão com o servidor (modo offline)",
             "Ação",
             JOptionPane.INFORMATION_MESSAGE);
+        return;
       }
+
+      // Não pode desafiar sem login/token
+      if (jogadorAtual == null || jogadorAtual.isEmpty() || token == null || token.isEmpty()) {
+        JOptionPane.showMessageDialog(this, "Você precisa estar logado para desafiar.", "Ação",
+            JOptionPane.WARNING_MESSAGE);
+        return;
+      }
+
+      // Reset antigo botão (só um 'Enviado' por vez)
+      if (desafioEnviadoPara != null && !desafioEnviadoPara.equals(nome)) {
+        JButton prev = playerButtons.get(desafioEnviadoPara);
+        if (prev != null) {
+          prev.setText("Desafiar");
+        }
+        // Remover indicação de desafio enviado anterior (se houver)
+        if (outgoingChallengeRow != null) {
+          incomingChallengesPanel.remove(outgoingChallengeRow);
+          outgoingChallengeRow = null;
+          incomingChallengesPanel.revalidate();
+          incomingChallengesPanel.repaint();
+        }
+      }
+
+      // Marcar este como enviado
+      desafioEnviadoPara = nome;
+      botao.setText("Enviado");
+
+      // Atualiza a indicação visual de desafio enviado dentro da caixa de desafios
+      if (outgoingChallengeRow != null) {
+        incomingChallengesPanel.remove(outgoingChallengeRow);
+        outgoingChallengeRow = null;
+      }
+
+      // Envia o comando DESAFIAR para o servidor (formato atual do projeto)
+      connection.sendLine("DESAFIAR " + jogadorAtual + " " + token + " " + nome);
     });
 
     linha.add(label, BorderLayout.CENTER);
@@ -694,113 +790,259 @@ public class Jogo extends JFrame {
       System.out.println("Recebido do servidor: " + line);
 
       // 1) Fluxo de cadastro/login usando pipe
-      if ("CADASTRAR".equalsIgnoreCase(comandoServer)) {
-        if ("201".equals(codigoServer)) {
-          // Sucesso: avançar para HOME
-          atualizarListaJogadores();
-          cardLayout.show(root, "home");
-          if (loginButton != null)
-            loginButton.setEnabled(true);
-          if (loginStatusLabel != null)
-            loginStatusLabel.setText(" ");
+      switch (comandoServer) {
+        case "CADASTRAR": {
+          if ("201".equals(codigoServer)) {
+            // Sucesso: avançar para HOME
+            atualizarListaJogadores();
+            cardLayout.show(root, "home");
+            if (loginButton != null)
+              loginButton.setEnabled(true);
+            if (loginStatusLabel != null)
+              loginStatusLabel.setText(" ");
 
-          // Salvando o token
-          token = separarValores(valoresServer, "token");
+            // Salvando o token
+            token = separarValores(valoresServer, "token");
 
-          // Após entrar na Home, solicitar lista atual de jogadores
-          if (connection != null && connection.isConnected()) {
-            connection.sendLine("LISTARJOGADORES");
+            // Após entrar na Home, solicitar lista atual de jogadores
+            if (connection != null && connection.isConnected()) {
+              connection.sendLine("LISTARJOGADORES");
+            }
+          } else {
+            // Falha: exibir textoServer (mensagem do backend) ou padrão
+            String motivo = (textoServer != null && !textoServer.isEmpty()) ? textoServer : "Cadastro não realizado";
+            if (loginStatusLabel != null) {
+              loginStatusLabel.setForeground(new Color(120, 0, 0));
+              loginStatusLabel.setText(motivo);
+            }
+            JOptionPane.showMessageDialog(this, motivo, "Cadastro não realizado", JOptionPane.WARNING_MESSAGE);
+            if (loginButton != null)
+              loginButton.setEnabled(true);
           }
-        } else {
-          // Falha: exibir textoServer (mensagem do backend) ou padrão
-          String motivo = (textoServer != null && !textoServer.isEmpty()) ? textoServer : "Cadastro não realizado";
+          break;
+        }
+        case "LISTARJOGADORES": {
+          if ("200".equals(codigoServer)) {
+            String jogadoresLista = separarValores(valoresServer, "jogadores");
+            String jogadores[] = separarLista(jogadoresLista);
+            String csv = "";
+            for (String j : jogadores) {
+              if (csv.length() > 0) {
+                csv += ",";
+              }
+              String nome = separarValores(j, "nome");
+              if (!jogadorAtual.equals(nome)) {
+                csv += nome;
+              }
+            }
+            atualizarListaJogadoresDoServidor(csv);
+          } else {
+            // erro ao listar – opcionalmente exibir no chat
+            if (mensagensArea != null) {
+              mensagensArea.append("Falha ao listar jogadores: " + textoServer + "\n");
+            }
+          }
+          break;
+        }
+        case "DESAFIAR": {
+          if ("201".equals(codigoServer)) {
+            String desafioEnviadoPara = separarValores(valoresServer, "desafiado");
+            // Desafio enviado com sucesso
+            // Cria painel de desafio recebido
+            JPanel challengeRow = new JPanel(new FlowLayout(FlowLayout.LEFT));
+            challengeRow.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(200, 200, 200)),
+                new EmptyBorder(6, 6, 6, 6)));
+            JLabel lbl = new JLabel("Desafio enviado com sucesso para: " + desafioEnviadoPara);
+
+            challengeRow.add(lbl);
+            // Remove any previous "Desafio enviado com sucesso" entry before adding
+            for (Component comp : incomingChallengesPanel.getComponents()) {
+              if (comp instanceof JPanel) {
+                JPanel p = (JPanel) comp;
+                for (Component inner : p.getComponents()) {
+                  if (inner instanceof JLabel) {
+                    String txt = ((JLabel) inner).getText();
+                    if (txt != null && txt.startsWith("Desafio enviado com sucesso")) {
+                      incomingChallengesPanel.remove(p);
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+            // Track this as the current outgoing success row so it can be removed later
+            outgoingChallengeRow = challengeRow;
+            incomingChallengesPanel.add(challengeRow, 0);
+            incomingChallengesPanel.revalidate();
+            incomingChallengesPanel.repaint();
+          } else if ("200".equals(codigoServer)) {
+            // Mensagem de desafio recebido: extrai quem desafiou e adiciona painel com
+            // aceitar/recusar
+            String challenger = separarValores(valoresServer, "desafiante");
+            if (challenger.isEmpty())
+              break;
+
+            // Cria painel de desafio recebido
+            JPanel challengeRow = new JPanel(new FlowLayout(FlowLayout.LEFT));
+            challengeRow.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(200, 200, 200)),
+                new EmptyBorder(6, 6, 6, 6)));
+            JLabel lbl = new JLabel("Desafio recebido de " + challenger);
+            JButton btnAceitar = new JButton("Aceitar");
+            JButton btnRecusar = new JButton("Recusar");
+
+            btnAceitar.addActionListener(ev -> {
+              // Envia aceitação para o servidor; formato padrão usado no projeto
+              if (connection != null && connection.isConnected()) {
+                connection.sendLine("ACEITARDESAFIO " + jogadorAtual + " " + token + " " + challenger);
+              }
+              incomingChallengesPanel.remove(challengeRow);
+              incomingChallengesPanel.revalidate();
+              incomingChallengesPanel.repaint();
+            });
+
+            btnRecusar.addActionListener(ev -> {
+              if (connection != null && connection.isConnected()) {
+                connection.sendLine("RECUSARDESAFIO " + jogadorAtual + " " + token + " " + challenger);
+              }
+              incomingChallengesPanel.remove(challengeRow);
+              incomingChallengesPanel.revalidate();
+              incomingChallengesPanel.repaint();
+            });
+
+            challengeRow.add(lbl);
+            challengeRow.add(btnAceitar);
+            challengeRow.add(btnRecusar);
+            incomingChallengesPanel.add(challengeRow, 0);
+            incomingChallengesPanel.revalidate();
+            incomingChallengesPanel.repaint();
+            break;
+          }
+        }
+        case "ACEITARDESAFIO": {
+          break;
+        }
+        case "RECUSARDESAFIO": {
+          break;
+        }
+        case "CHATGLOBAL": {
+          String from = separarValores(valoresServer, "nome");
+          String msg = separarValores(valoresServer, "mensagem");
+          String display = (from != null && !from.isEmpty()) ? (from + ": " + msg) : msg;
+          if (mensagensArea != null && display != null && !display.isEmpty()) {
+            mensagensArea.append(display + "\n");
+            mensagensArea.setCaretPosition(mensagensArea.getDocument().getLength());
+          }
+          break;
+        }
+        case "CHATPARTIDA": {
+          break;
+        }
+        case "PRONTOPARTIDA": {
+          break;
+        }
+        case "RESERVADOPARTIDA": {
+          break;
+        }
+        case "INICIOPARTIDA": {
+          break;
+        }
+        case "MOVER": {
+          break;
+        }
+        case "ATACAR": {
+          break;
+        }
+        case "SONAR": {
+          break;
+        }
+        case "PASSAR": {
+          break;
+        }
+        case "SAIRPARTIDA": {
+          break;
+        }
+        case "SAIR": {
+          break;
+        }
+        case "DETECTADO": {
+          break;
+        }
+        case "ACERTO": {
+          break;
+        }
+        case "MORTE": {
+          break;
+        }
+        case "VITORIA": {
+          break;
+        }
+        case "FIMPARTIDA": {
+          break;
+        }
+        case "TURNO": {
+          break;
+        }
+        case "ERRO": {
+          break;
+        }
+        case "DESCONECTADO": {
+          try {
+            if (connection != null) {
+              connection.close();
+            }
+          } catch (Exception ignore) {
+          }
+          jogadorAtual = null;
+          token = null;
+          connection = null;
+          jogadoresModel.clear();
+          if (mensagensArea != null) {
+            mensagensArea.setText("");
+          }
+          if (chatInputField != null) {
+            chatInputField.setText("");
+          }
+          if (infoJogadorLabel != null) {
+            infoJogadorLabel.setText("");
+          }
           if (loginStatusLabel != null) {
             loginStatusLabel.setForeground(new Color(120, 0, 0));
-            loginStatusLabel.setText(motivo);
+            loginStatusLabel.setText("Desconectado por inatividade");
           }
-          JOptionPane.showMessageDialog(this, motivo, "Cadastro não realizado", JOptionPane.WARNING_MESSAGE);
-          if (loginButton != null)
+          if (loginButton != null) {
             loginButton.setEnabled(true);
+          }
+          // Mostrar popup informando desconexão e voltar para tela de login
+          JOptionPane.showMessageDialog(this, "Desconectado por inatividade", "Desconectado",
+              JOptionPane.WARNING_MESSAGE);
+          cardLayout.show(root, "login");
+          break;
+        }
+        default: {
+          break;
         }
 
-        // 2) Compatibilidade com mensagens antigas baseadas em prefixos
-      } else if (line.startsWith("LOGIN_FAIL")) {
-        // Exemplo: LOGIN_FAIL Motivo do erro
-        String motivo = line.length() > 10 ? line.substring(10).trim() : "Cadastro não realizado";
-        if (loginStatusLabel != null) {
-          loginStatusLabel.setForeground(new Color(120, 0, 0));
-          loginStatusLabel.setText(motivo);
-        }
-        JOptionPane.showMessageDialog(this, motivo, "Cadastro não realizado", JOptionPane.WARNING_MESSAGE);
-        if (loginButton != null)
-          loginButton.setEnabled(true);
-      } else if ("CHATGLOBAL".equalsIgnoreCase(comandoServer)) {
-        // Protocolo sugerido: CHATGLOBAL|<from>|<texto>
-        System.out.println("Chat global recebido: " + line);
-        String from = separarValores(valoresServer, "nome");
-        String msg = separarValores(valoresServer, "mensagem");
-        String display = (from != null && !from.isEmpty()) ? (from + ": " + msg) : msg;
-        if (mensagensArea != null && display != null && !display.isEmpty()) {
-          mensagensArea.append(display + "\n");
-          mensagensArea.setCaretPosition(mensagensArea.getDocument().getLength());
-        }
-      } else if (line.startsWith("ENEMY_ATTACK ")) {
-        // Exemplo: ENEMY_ATTACK x y
-        String[] p = line.split(" ");
-        if (p.length >= 3) {
-          try {
-            int x = Integer.parseInt(p[1]);
-            int y = Integer.parseInt(p[2]);
-            if (x >= 0 && x < BOARD_SIZE && y >= 0 && y < BOARD_SIZE) {
-              atacado[y][x] = true;
-              atualizarTabuleiro();
-            }
-          } catch (NumberFormatException ignored) {
-          }
-        }
-      } else if ("LISTARJOGADORES".equalsIgnoreCase(comandoServer)) {
-        // Esperado: JOGADORES|200|OK|Ana,Bruno,Carla
-        if ("200".equals(codigoServer)) {
-          System.out.println(valoresServer);
-          String jogadoresLista = separarValores(valoresServer, "jogadores");
-          String jogadores[] = separarLista(jogadoresLista);
-          String csv = "";
-          System.out.println(jogadoresLista);
-          System.out.println(jogadores);
-          for (String j : jogadores) {
-            if (csv.length() > 0) {
-              csv += ",";
-            }
-            String nome = separarValores(j, "nome");
-            if (!jogadorAtual.equals(nome)) {
-              csv += nome;
-            }
-          }
-          System.out.println(csv);
-          atualizarListaJogadoresDoServidor(csv);
-        } else {
-          // erro ao listar – opcionalmente exibir no chat
-          if (mensagensArea != null) {
-            mensagensArea.append("Falha ao listar jogadores: " + textoServer + "\n");
-          }
-        }
-      } else if ("JOGO".equalsIgnoreCase(comandoServer) && "START".equalsIgnoreCase(codigoServer)) {
-        // Iniciar a partida e ir para tela de jogo
-        iniciarPartida();
-        cardLayout.show(root, "game");
-      } else if (line.equals("TURN_PLAYER")) {
-        // Servidor devolveu o turno ao jogador
-        playerTurn = true;
-        atualizarStatusTurno();
-      } else if (line.equals("TURN_ENEMY")) {
-        playerTurn = false;
-        atualizarStatusTurno();
-      } else {
-        // fallback: logar mensagem crua na área de mensagens para debug
-        if (mensagensArea != null) {
-          mensagensArea.append("Servidor: " + line + "\n");
-          mensagensArea.setCaretPosition(mensagensArea.getDocument().getLength());
-        }
+        // } else if ("JOGO".equalsIgnoreCase(comandoServer) &&
+        // "START".equalsIgnoreCase(codigoServer)) {
+        // // Iniciar a partida e ir para tela de jogo
+        // iniciarPartida();
+        // cardLayout.show(root, "game");
+        // } else if (line.equals("TURN_PLAYER")) {
+        // // Servidor devolveu o turno ao jogador
+        // playerTurn = true;
+        // atualizarStatusTurno();
+        // } else if (line.equals("TURN_ENEMY")) {
+        // playerTurn = false;
+        // atualizarStatusTurno();
+        // } else {
+        // // fallback: logar mensagem crua na área de mensagens para debug
+        // if (mensagensArea != null) {
+        // mensagensArea.append("Servidor: " + line + "\n");
+        // mensagensArea.setCaretPosition(mensagensArea.getDocument().getLength());
+        // }
+        // }
       }
     });
   }
@@ -866,6 +1108,7 @@ public class Jogo extends JFrame {
       if (socket != null)
         socket.close();
     }
+
   }
 
   public static void main(String[] args) {

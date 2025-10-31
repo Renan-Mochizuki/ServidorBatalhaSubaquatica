@@ -477,7 +477,7 @@ public class GameManager {
 
       clienteDesafiante.setJogadorDesafiado(nomeDesafiado);
 
-      clienteDesafiante.enviarLinha(tipo, "201", "Desafio enviado com sucesso", "");
+      clienteDesafiante.enviarLinha(tipo, "201", "Desafio enviado com sucesso", "desafiado:" + nomeDesafiado);
       return;
     }
 
