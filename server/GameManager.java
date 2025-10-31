@@ -314,6 +314,23 @@ public class GameManager {
     }
   }
 
+  private void notificarTodos(String tipo, String codigo, String mensagem, String valor) {
+    // Percorre todos os clientes da e envia a mensagem
+    List<Cliente> clientesSnapshot;
+    synchronized (listaCliente) {
+      clientesSnapshot = new ArrayList<>(listaCliente.values());
+    }
+    Iterator<Cliente> it = clientesSnapshot.iterator();
+    while (it.hasNext()) {
+      Cliente clienteAtual = it.next();
+      JogoPartida partidaAndamento = encontrarPartidaAndamento(clienteAtual.getIdPartida());
+      if (partidaAndamento != null && Constants.CHAT_GLOBAL_SOMENTE_LOBBY) {
+        continue;
+      }
+      clienteAtual.enviarLinha(tipo, codigo, mensagem, valor);
+    }
+  }
+
   //
   // MÉTODOS PARA AÇÕES DOS CLIENTES
   //
@@ -358,6 +375,24 @@ public class GameManager {
       novoCliente.enviarLinha(tipo, "201", "Cadastrado com sucesso", "token:" + tokenCliente);
       // Inicia keepalive do cliente
       keepAliveCliente(novoCliente, tipo);
+
+      // Notifica todos os outros clientes sobre o novo cliente conectado
+      StringBuilder jogadoresServidor = new StringBuilder();
+
+      synchronized (listaCliente) {
+        Iterator<Cliente> it = listaCliente.values().iterator();
+        while (it.hasNext()) {
+          Cliente cliente = it.next();
+          if (jogadoresServidor.isEmpty()) {
+            jogadoresServidor.append("nome:" + cliente.getNome());
+            continue;
+          }
+          jogadoresServidor.append(Constants.SEPARADORITEM).append("nome:" + cliente.getNome());
+        }
+      }
+
+      notificarTodos(Constants.TIPOLISTARJOGADORES, "200", "Jogadores conectados",
+          "jogadores:{" + jogadoresServidor.toString() + "}");
     }
   }
 
@@ -551,19 +586,8 @@ public class GameManager {
   public void chatGlobalCliente(Cliente cliente, String mensagem, String tipo) {
     String nomeCliente = cliente.getNome();
 
-    // Percorre todos os clientes e envia a mensagem
-    synchronized (listaCliente) {
-      Iterator<Cliente> it = listaCliente.values().iterator();
-      while (it.hasNext()) {
-        Cliente clienteAtual = it.next();
-        JogoPartida partidaAndamento = encontrarPartidaAndamento(cliente.getIdPartida());
-        if (partidaAndamento != null && Constants.CHAT_GLOBAL_SOMENTE_LOBBY) {
-          continue;
-        }
-        clienteAtual.enviarLinha(tipo, "200", "Mensagem global",
-            "nome:" + nomeCliente + Constants.SEPARADORATRIBUTO + "mensagem:" + mensagem);
-      }
-    }
+    notificarTodos(tipo, "200", "Mensagem global",
+        "nome:" + nomeCliente + Constants.SEPARADORATRIBUTO + "mensagem:" + mensagem);
   }
 
   public void chatPartidaCliente(Cliente cliente, String mensagem, String tipo) {
