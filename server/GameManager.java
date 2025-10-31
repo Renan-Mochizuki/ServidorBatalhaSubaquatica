@@ -336,8 +336,13 @@ public class GameManager {
     // Criando um token para o cliente, o cliente receberá esse token e deve
     // utilizá-lo para garantir sua identidade, poderíamos gerar um hash a partir do
     // nome e um salt mas um randomUUID já garante a unicidade necessária
-    // String tokenCliente = UUID.randomUUID().toString();
-    String tokenCliente = nomeCliente.toLowerCase();
+    String tokenCliente;
+
+    if (nomeCliente.equalsIgnoreCase("teste")) {
+      tokenCliente = "teste";
+    } else {
+      tokenCliente = UUID.randomUUID().toString();
+    }
 
     Cliente novoCliente = new Cliente(nomeCliente, tokenCliente, connectionSocket);
     // Tenta adicionar o cliente na lista, esse método retorna o item anterior
@@ -382,10 +387,10 @@ public class GameManager {
       while (it.hasNext()) {
         Cliente cliente = it.next();
         if (jogadoresServidor.isEmpty()) {
-          jogadoresServidor.append(cliente.getNome());
+          jogadoresServidor.append("nome:" + cliente.getNome());
           continue;
         }
-        jogadoresServidor.append(Constants.SEPARADORITEM).append(cliente.getNome());
+        jogadoresServidor.append(Constants.SEPARADORITEM).append("nome:" + cliente.getNome());
       }
     }
 

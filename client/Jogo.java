@@ -7,7 +7,6 @@ import java.awt.event.ActionEvent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import javax.swing.Timer;
 import java.io.*;
 import java.net.*;
 import java.util.function.Consumer;
@@ -34,6 +33,9 @@ public class Jogo extends JFrame {
   private JTextField portField; // porta do servidor
   private JLabel loginStatusLabel; // status na tela de login
   private JButton loginButton; // botão de login para habilitar/desabilitar
+  // Chat input na Home
+  private JTextField chatInputField;
+  private JButton chatSendButton;
 
   // --- Configurações / estado do tabuleiro ---
   private static final int BOARD_SIZE = 16;
@@ -58,6 +60,8 @@ public class Jogo extends JFrame {
 
   // Controles de configuração do jogo
   private JSpinner spStartX, spStartY, spMove, spAttack, spSonar;
+
+  private String token;
 
   public Jogo() {
     super("Batalha Subaquática");
@@ -127,6 +131,11 @@ public class Jogo extends JFrame {
             "Nome obrigatório", JOptionPane.WARNING_MESSAGE);
         return;
       }
+      if (nome.contains(" ") || !nome.matches("\\A\\p{ASCII}*\\z")) {
+        JOptionPane.showMessageDialog(this, "O nome não pode conter espaços ou caracteres especiais.",
+            "Nome inválido", JOptionPane.WARNING_MESSAGE);
+        return;
+      }
       String host = hostField.getText().trim().isEmpty() ? "localhost" : hostField.getText().trim();
       int porta;
       try {
@@ -189,7 +198,7 @@ public class Jogo extends JFrame {
     JButton btnAtualizar = new JButton("Atualizar");
     btnAtualizar.addActionListener(e -> {
       if (connection != null && connection.isConnected()) {
-        connection.sendLine("LISTAR_JOGADORES");
+        connection.sendLine("LISTARJOGADORES");
       } else {
         JOptionPane.showMessageDialog(this, "Sem conexão com o servidor.", "Lista de jogadores",
             JOptionPane.WARNING_MESSAGE);
@@ -232,6 +241,18 @@ public class Jogo extends JFrame {
     mensagensPanel.add(lblMsg, BorderLayout.NORTH);
     mensagensPanel.add(spMsgs, BorderLayout.CENTER);
 
+    // Linha de input de chat (campo + botão Enviar)
+    JPanel chatRow = new JPanel(new BorderLayout(8, 0));
+    chatInputField = new JTextField();
+    chatSendButton = new JButton("Enviar");
+    // Enviar ao clicar no botão
+    chatSendButton.addActionListener(e -> enviarMensagemChat());
+    // Enviar ao pressionar Enter no campo de texto
+    chatInputField.addActionListener(e -> enviarMensagemChat());
+    chatRow.add(chatInputField, BorderLayout.CENTER);
+    chatRow.add(chatSendButton, BorderLayout.EAST);
+    mensagensPanel.add(chatRow, BorderLayout.SOUTH);
+
     home.add(topo, BorderLayout.NORTH);
     home.add(centro, BorderLayout.CENTER);
     home.add(direita, BorderLayout.EAST);
@@ -256,14 +277,11 @@ public class Jogo extends JFrame {
     painelLista.removeAll();
 
     // Atualiza caixa de mensagens da Home
+    // Preserva as mensagens existentes (antes este método limpava a área de
+    // mensagens,
+    // o que fazia com que ao clicar em "Atualizar" todo o histórico desaparecesse).
+    // Mantemos a posição do caret ao final para mostrar as mensagens mais recentes.
     if (mensagensArea != null) {
-      StringBuilder sb = new StringBuilder();
-      sb.append("Ana: Olá!\n");
-      sb.append("Bruno: Vamos jogar?\n");
-      if (jogadorAtual != null && !jogadorAtual.isEmpty()) {
-        sb.append(jogadorAtual).append(": Oi!\n");
-      }
-      mensagensArea.setText(sb.toString());
       mensagensArea.setCaretPosition(mensagensArea.getDocument().getLength());
     }
 
@@ -588,6 +606,78 @@ public class Jogo extends JFrame {
     worker.execute();
   }
 
+  // Envia mensagem de chat para o servidor no formato: CHATGLOBAL <jogadorAtual>
+  // <token> <mensagem>
+  // Não faz append local; o servidor deverá ecoar a mensagem de volta para todos.
+  private void enviarMensagemChat() {
+    if (chatInputField == null)
+      return;
+    String texto = chatInputField.getText();
+    if (texto == null)
+      texto = "";
+    texto = texto.trim();
+    if (texto.isEmpty())
+      return;
+
+    if (jogadorAtual == null || jogadorAtual.isEmpty()) {
+      JOptionPane.showMessageDialog(this, "Você precisa estar logado para enviar mensagens.", "Chat",
+          JOptionPane.WARNING_MESSAGE);
+      return;
+    }
+    if (token == null || token.isEmpty()) {
+      JOptionPane.showMessageDialog(this, "Token ausente. Refaça o login.", "Chat",
+          JOptionPane.WARNING_MESSAGE);
+      return;
+    }
+
+    if (connection != null && connection.isConnected()) {
+      // Envia exatamente no formato pedido (separado por espaços)
+      connection.sendLine("CHATGLOBAL " + jogadorAtual + " " + token + " " + texto);
+      // Não fazemos append local — o servidor deverá reenviar a mensagem para todos
+      chatInputField.setText("");
+    } else {
+      JOptionPane.showMessageDialog(this, "Sem conexão com o servidor.", "Chat",
+          JOptionPane.WARNING_MESSAGE);
+    }
+  }
+
+  // Função que separa o valor de um campo específico da linha
+  private String separarValores(String line, String campo) {
+    // Adiciona uma vírgula no final para facilitar o parsing do último campo
+    String temp = line + ",";
+    int startIndex = temp.indexOf(campo + ":");
+
+    if (startIndex == -1) {
+      return null; // Campo não encontrado
+    }
+
+    startIndex += (campo + ":").length();
+
+    // Caso especial: o campo "lista" termina com "}"
+    if (campo.equals("lista")) {
+      int endIndex = temp.indexOf("}", startIndex);
+      if (endIndex == -1)
+        return null;
+      return temp.substring(startIndex, endIndex + 1); // inclui o '}'
+    } else {
+      int endIndex = temp.indexOf(",", startIndex);
+      return temp.substring(startIndex, endIndex);
+    }
+  }
+
+  // Função que separa os itens dentro de uma lista { ... }
+  private String[] separarLista(String listaCampo) {
+    if (listaCampo == null || !listaCampo.startsWith("{") || !listaCampo.endsWith("}")) {
+      return new String[0]; // Lista inválida
+    }
+
+    // Remove as chaves { e }
+    String conteudo = listaCampo.substring(1, listaCampo.length() - 1);
+
+    // Divide os itens por ';'
+    return conteudo.split(";");
+  }
+
   // Ponto central para tratar mensagens vindas do servidor
   private void handleServerMessage(String line) {
     if (line == null)
@@ -601,7 +691,7 @@ public class Jogo extends JFrame {
       String textoServer = parts.length > 2 ? parts[2] : "";
       String valoresServer = parts.length > 3 ? parts[3] : ""; // valores adicionais (ex.: lista CSV)
 
-      System.out.println("Recebido do servidor: " + line); 
+      System.out.println("Recebido do servidor: " + line);
 
       // 1) Fluxo de cadastro/login usando pipe
       if ("CADASTRAR".equalsIgnoreCase(comandoServer)) {
@@ -614,9 +704,12 @@ public class Jogo extends JFrame {
           if (loginStatusLabel != null)
             loginStatusLabel.setText(" ");
 
+          // Salvando o token
+          token = separarValores(valoresServer, "token");
+
           // Após entrar na Home, solicitar lista atual de jogadores
           if (connection != null && connection.isConnected()) {
-            connection.sendLine("LISTAR_JOGADORES");
+            connection.sendLine("LISTARJOGADORES");
           }
         } else {
           // Falha: exibir textoServer (mensagem do backend) ou padrão
@@ -643,8 +736,9 @@ public class Jogo extends JFrame {
           loginButton.setEnabled(true);
       } else if ("CHATGLOBAL".equalsIgnoreCase(comandoServer)) {
         // Protocolo sugerido: CHATGLOBAL|<from>|<texto>
-        String from = codigoServer; // usamos 'codigoServer' como remetente nesse caso
-        String msg = textoServer;
+        System.out.println("Chat global recebido: " + line);
+        String from = separarValores(valoresServer, "nome");
+        String msg = separarValores(valoresServer, "mensagem");
         String display = (from != null && !from.isEmpty()) ? (from + ": " + msg) : msg;
         if (mensagensArea != null && display != null && !display.isEmpty()) {
           mensagensArea.append(display + "\n");
@@ -664,10 +758,25 @@ public class Jogo extends JFrame {
           } catch (NumberFormatException ignored) {
           }
         }
-      } else if ("JOGADORES".equalsIgnoreCase(comandoServer)) {
+      } else if ("LISTARJOGADORES".equalsIgnoreCase(comandoServer)) {
         // Esperado: JOGADORES|200|OK|Ana,Bruno,Carla
         if ("200".equals(codigoServer)) {
-          String csv = valoresServer != null && !valoresServer.isEmpty() ? valoresServer : textoServer;
+          System.out.println(valoresServer);
+          String jogadoresLista = separarValores(valoresServer, "jogadores");
+          String jogadores[] = separarLista(jogadoresLista);
+          String csv = "";
+          System.out.println(jogadoresLista);
+          System.out.println(jogadores);
+          for (String j : jogadores) {
+            if (csv.length() > 0) {
+              csv += ",";
+            }
+            String nome = separarValores(j, "nome");
+            if (!jogadorAtual.equals(nome)) {
+              csv += nome;
+            }
+          }
+          System.out.println(csv);
           atualizarListaJogadoresDoServidor(csv);
         } else {
           // erro ao listar – opcionalmente exibir no chat
@@ -689,7 +798,7 @@ public class Jogo extends JFrame {
       } else {
         // fallback: logar mensagem crua na área de mensagens para debug
         if (mensagensArea != null) {
-          mensagensArea.append(line + "\n");
+          mensagensArea.append("Servidor: " + line + "\n");
           mensagensArea.setCaretPosition(mensagensArea.getDocument().getLength());
         }
       }
