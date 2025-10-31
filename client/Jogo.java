@@ -433,34 +433,6 @@ public class Jogo extends JFrame {
     JPanel configuracoes = new JPanel();
     configuracoes.setLayout(new FlowLayout(FlowLayout.LEFT, 8, 4));
 
-    spStartX = new JSpinner(new SpinnerNumberModel(startX, 0, BOARD_SIZE - 1, 1));
-    spStartY = new JSpinner(new SpinnerNumberModel(startY, 0, BOARD_SIZE - 1, 1));
-    spMove = new JSpinner(new SpinnerNumberModel(moveRange, 0, BOARD_SIZE, 1));
-    spAttack = new JSpinner(new SpinnerNumberModel(attackRange, 0, BOARD_SIZE, 1));
-    spSonar = new JSpinner(new SpinnerNumberModel(sonarRange, 0, BOARD_SIZE, 1));
-
-    JButton aplicar = new JButton("Aplicar & Reiniciar");
-    aplicar.addActionListener(e -> {
-      startX = (int) spStartX.getValue();
-      startY = (int) spStartY.getValue();
-      moveRange = (int) spMove.getValue();
-      attackRange = (int) spAttack.getValue();
-      sonarRange = (int) spSonar.getValue();
-      iniciarPartida();
-    });
-
-    configuracoes.add(new JLabel("Início X:"));
-    configuracoes.add(spStartX);
-    configuracoes.add(new JLabel("Y:"));
-    configuracoes.add(spStartY);
-    configuracoes.add(new JLabel("Movimento:"));
-    configuracoes.add(spMove);
-    configuracoes.add(new JLabel("Ataque:"));
-    configuracoes.add(spAttack);
-    configuracoes.add(new JLabel("Sonar:"));
-    configuracoes.add(spSonar);
-    configuracoes.add(aplicar);
-
     // Seleção de modo
     JToggleButton btMover = new JToggleButton("Mover");
     JToggleButton btAtacar = new JToggleButton("Atacar");
@@ -891,6 +863,22 @@ public class Jogo extends JFrame {
             JLabel lbl = new JLabel("Desafio recebido de " + challenger);
             JButton btnAceitar = new JButton("Aceitar");
             JButton btnRecusar = new JButton("Recusar");
+
+            // Remove any previous "Desafio enviado com sucesso" entry before adding
+            for (Component comp : incomingChallengesPanel.getComponents()) {
+              if (comp instanceof JPanel) {
+                JPanel p = (JPanel) comp;
+                for (Component inner : p.getComponents()) {
+                  if (inner instanceof JLabel) {
+                    String txt = ((JLabel) inner).getText();
+                    if (txt != null && txt.startsWith("Desafio recebido de " + challenger)) {
+                      incomingChallengesPanel.remove(p);
+                      break;
+                    }
+                  }
+                }
+              }
+            }
 
             btnAceitar.addActionListener(ev -> {
               // Envia aceitação para o servidor; formato padrão usado no projeto
