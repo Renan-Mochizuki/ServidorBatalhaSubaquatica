@@ -1,64 +1,223 @@
-100
-cadastrar a
-cadastrar b
-desafiar a a b
-desafiar b b a
-mover a a 1 1 1
-mover b b 1 1 1
-atacar a a 2 0 1
-cadastrar c
-desafiar c c a
-mover c c 1 1 1
-mover a a 1 0 1
-mover a a 0 1 1
-mover b b 1 0 1
-mover b b 0 1 1
-atacar b b 3 0 1
-atacar a a 2 0 1
-cadastrar d
-desafiar d d c
-mover d d 1 1 1
-desafiar c c d
-mover c c 1 0 1
-mover c c 0 1 1
-mover d d 1 0 1
-cadastrar e
-cadastrar f
-mover a a 1 0 1
-mover b b 1 0 1
-mover c c 1 0 1
-mover d d 1 0 1
-mover a a 1 0 1
-mover b b 1 0 1
-mover c c 1 0 1
-mover d d 1 0 1
-mover a a 1 0 1
-mover b b 1 0 1
-mover c c 1 0 1
-mover d d 1 0 1
-mover a a 1 0 1
-mover b b 1 0 1
-mover c c 1 0 1
-mover d d 1 0 1
-cadastrar g
-desafiar g g e
-desafiar e e f
-desafiar f f e
-mover e e 1 1 1
-mover f f 1 1 1
-mover g g 1 1 1
-mover a a 1 1 1
-mover b b 1 1 1
-atacar a a 5 0
-atacar b b 5 0
-mover c c 1 1 1
-mover d d 1 1 1
-mover e e 1 1 1
-mover e e 1 1 1
-mover f f 1 1 1
-mover g g 1 1 1
-mover a a 1 1 1
-mover b b 1 1 1
-mover c c 1 1 1
-mover d d 1 1 1
-mover e e 1 1 1
+a b c d e f g h i j
+200
+listarjogadores
+listarpartidas
+listarjogadores
+listarjogadores
+listarjogadores
+listarjogadores
+listarjogadores
+listarjogadores
+desafiar b
+listarpartidas
+desafiar a
+desafiar c
+desafiar d
+desafiar e
+desafiar f
+desafiar a
+desafiar b
+desafiar a
+desafiar c
+desafiar d
+listarjogadores
+desafiar e
+desafiar h
+desafiar g
+desafiar w
+desafiar z
+listarpartidas
+desafiar x
+desafiar f
+listarjogadores
+desafiar m
+desafiar i
+desafiar h
+desafiar g
+desafiar w
+desafiar z
+desafiar a
+desafiar f
+desafiar g
+desafiar h
+desafiar i
+desafiar j
+desafiar k
+desafiar l
+desafiar c
+desafiar d
+desafiar x
+desafiar t
+desafiar f
+desafiar g
+desafiar h
+desafiar i
+desafiar j
+desafiar k
+desafiar l
+desafiar w
+desafiar s
+desafiar t
+desafiar s
+desafiar r
+desafiar q
+desafiar p
+desafiar o
+desafiar n
+desafiar m
+desafiar l
+desafiar w
+desafiar s
+desafiar t
+desafiar s
+desafiar r
+desafiar q
+desafiar p
+desafiar o
+desafiar n
+desafiar m
+pronto
+pronto
+pronto
+listarjogadores
+listarpartidas
+pronto
+pronto
+pronto
+pronto
+pronto
+pronto
+listarjogadores
+listarpartidas
+pronto
+pronto
+pronto
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+sonar 1 0 1
+sonar 1 0 1
+sonar 1 0 1
+sonar 1 0 1
+sonar 1 0 1
+sonar 1 0 1
+sonar 1 0 1
+sonar 1 0 1
+sonar 1 0 1
+sonar 1 0 1
+sonar 1 0 1
+sonar 1 0 1
+sonar 1 0 1
+sonar 1 0 1
+sonar 1 0 1
+sonar 1 0 1
+sonar 1 0 1
+mover 0 2 1
+mover 0 2 1
+atacar 1 0 1
+atacar 1 0 1
+atacar 1 0 1
+listarjogadores
+listarpartidas
+sonar 1 0 1
+sonar 1 0 1
+sonar 1 0 1
+sonar 1 0 1
+mover 0 2 1
+mover 0 2 1
+atacar 1 0 1
+atacar 1 0 1
+atacar 1 0 1
+listarjogadores
+listarpartidas
+desafiar f
+desafiar g
+desafiar h
+desafiar i
+desafiar j
+desafiar k
+desafiar l
+desafiar c
+desafiar d
+desafiar x
+desafiar t
+desafiar f
+desafiar g
+desafiar h
+desafiar i
+desafiar j
+desafiar k
+desafiar l
+desafiar w
+desafiar s
+desafiar t
+desafiar s
+desafiar r

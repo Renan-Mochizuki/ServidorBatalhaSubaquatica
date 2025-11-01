@@ -1,4 +1,4 @@
-<#
+<# Código feito pelo agente Copilot para criar executavel
 build-small.ps1
 
 PowerShell helper to produce small app-images for Server and Jogo by:

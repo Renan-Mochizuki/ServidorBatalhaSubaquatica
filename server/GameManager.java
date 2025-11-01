@@ -376,10 +376,12 @@ public class GameManager {
       String tipo) {
     try {
       if (nomeCliente.contains(Constants.SEPARADORCLIENTE) || nomeCliente.contains(Constants.SEPARADOR)
-          || nomeCliente.contains(" ") || !nomeCliente.matches("\\A\\p{ASCII}*\\z")) {
+          || nomeCliente.contains(" ") || nomeCliente.contains(Constants.SEPARADORATRIBUTO)
+          || nomeCliente.contains(Constants.SEPARADORITEM) || !nomeCliente.matches("\\A\\p{ASCII}*\\z")) {
         DataOutputStream outToClient = new DataOutputStream(connectionSocket.getOutputStream());
-        enviarLinha(outToClient, tipo, "400", "Nome de cliente nao pode conter '" + Constants.SEPARADORCLIENTE
-            + "' ou '" + Constants.SEPARADOR + "' ou caracteres especiais", "campo:nomeCliente");
+        enviarLinha(outToClient, tipo, "400", "Nome de cliente nao pode conter: " + Constants.SEPARADORCLIENTE
+            + " " + Constants.SEPARADOR + " " + Constants.SEPARADORATRIBUTO + " " + Constants.SEPARADORITEM
+            + " ou espacos em brancos ou caracteres especiais", "campo:nomeCliente");
         return;
       }
     } catch (IOException e) {
@@ -392,8 +394,8 @@ public class GameManager {
     // nome e um salt mas um randomUUID já garante a unicidade necessária
     String tokenCliente;
 
-    if (nomeCliente.equalsIgnoreCase("teste")) {
-      tokenCliente = "teste";
+    if (nomeCliente.equalsIgnoreCase("teste") || nomeCliente.equalsIgnoreCase("teste2")) {
+      tokenCliente = nomeCliente;
     } else {
       tokenCliente = UUID.randomUUID().toString();
     }
@@ -893,7 +895,7 @@ public class GameManager {
       anterior.cancel(false);
     }
     int tempo = Constants.TEMPO_KEEPALIVE;
-    if("teste".equals(cliente.getNome())){
+    if ("teste".equals(cliente.getNome()) || "teste2".equals(cliente.getNome())) {
       tempo = 600; // tempo maior para cliente de teste
     }
     // Agenda novo timeout

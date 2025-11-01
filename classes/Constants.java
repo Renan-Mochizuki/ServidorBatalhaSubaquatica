@@ -12,7 +12,7 @@ public class Constants {
   public static final boolean KEEPALIVE = true; // Ativa ou desativa o keepalive
 
   // Quanto até um cliente ser desconectado pelo servidor
-  public static final int TEMPO_KEEPALIVE = 240; // em segundos
+  public static final int TEMPO_KEEPALIVE = 100; // em segundos
 
   // Proximidade inicial dos jogadores no ínicio da partida (gerado aleatoriamente
   // mas seguindo essa restrição)
@@ -61,15 +61,15 @@ public class Constants {
   public static final String TIPOSAIR = "SAIR";
   public static final String TIPOKEEPALIVE = "KEEPALIVE";
   // Nome das mensagens enviadas pelo servidor (adicionais do servidor)
-  public static final String TIPODESCONECTADO = "DESCONECTADO";
   public static final String TIPORESERVADOPARTIDA = "RESERVADOPARTIDA";
-  public static final String TIPODETECTADO = "DETECTADO";
   public static final String TIPOINICIOPARTIDA = "INICIOPARTIDA";
+  public static final String TIPOTURNO = "TURNO";
+  public static final String TIPOTURNOEXPIROU = "TURNO";
+  public static final String TIPODETECTADO = "DETECTADO";
   public static final String TIPOACERTO = "ACERTO";
   public static final String TIPOMORTE = "MORTE";
   public static final String TIPOVITORIA = "VITORIA";
   public static final String TIPOFIMPARTIDA = "FIMPARTIDA";
-  public static final String TIPOTURNO = "TURNO";
-  public static final String TIPOTURNOEXPIROU = "TURNO";
+  public static final String TIPODESCONECTADO = "DESCONECTADO";
   public static final String TIPOERRO = "ERRO";
 }

@@ -152,7 +152,7 @@ public class Jogo extends JFrame {
 
   // Keepalive scheduler for periodic pings to the server
   private ScheduledExecutorService keepaliveScheduler = null;
-  private static final long KEEPALIVE_INTERVAL_SECONDS = 120; // 2 minutes
+  private static final long KEEPALIVE_INTERVAL_SECONDS = 30;
 
   public Jogo() {
     super("Batalha Subaquática");
