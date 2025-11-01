@@ -119,6 +119,8 @@ public class GameManager {
       while (itDispositivos.hasNext()) {
         String todosJogadoresDetectados = "";
         DispositivoProximidade dispositivo = itDispositivos.next();
+        int xDispositivo = dispositivo.getPosicao().getX();
+        int yDispositivo = dispositivo.getPosicao().getY();
 
         // Pega a lista de todos jogadores próximos do dispositivo
         List<Jogador> jogadoresDetectados = jogoPartida.detectarJogadores(dispositivo);
@@ -132,7 +134,8 @@ public class GameManager {
           todosJogadoresDetectados += "nome:" + jogadorDetectado.getNome();
         }
         if (!todosJogadoresDetectados.isEmpty()) {
-          String valor = "num:" + dispositivo.getNum() + Constants.SEPARADORATRIBUTO + "jogadores:{"
+          String valor = "num:" + dispositivo.getNum() + Constants.SEPARADORATRIBUTO + "x:" + xDispositivo
+              + Constants.SEPARADORATRIBUTO + "y:" + yDispositivo + Constants.SEPARADORATRIBUTO + "jogadores:{"
               + todosJogadoresDetectados + "}";
           notificarJogadorPartida(dispositivo.getJogadorDono(), Constants.TIPODETECTADO, "200",
               "Jogadores detectados pelo dispositivo " + dispositivo.getNum(), valor);
@@ -343,6 +346,28 @@ public class GameManager {
     }
   }
 
+  private String gerarListaJogadores() {
+    // Notifica todos os outros clientes sobre o novo cliente conectado
+    StringBuilder jogadoresServidor = new StringBuilder();
+    List<Cliente> clientesSnapshot;
+
+    synchronized (listaCliente) {
+      clientesSnapshot = new ArrayList<>(listaCliente.values());
+    }
+
+    Iterator<Cliente> it = clientesSnapshot.iterator();
+    while (it.hasNext()) {
+      Cliente cliente = it.next();
+      if (jogadoresServidor.isEmpty()) {
+        jogadoresServidor.append("nome:" + cliente.getNome());
+        continue;
+      }
+      jogadoresServidor.append(Constants.SEPARADORITEM).append("nome:" + cliente.getNome());
+    }
+    String mensagem = "jogadores:{" + jogadoresServidor.toString() + "}";
+    return mensagem;
+  }
+
   //
   // MÉTODOS PARA AÇÕES DOS CLIENTES
   //
@@ -351,10 +376,10 @@ public class GameManager {
       String tipo) {
     try {
       if (nomeCliente.contains(Constants.SEPARADORCLIENTE) || nomeCliente.contains(Constants.SEPARADOR)
-          || nomeCliente.contains(" ")) {
+          || nomeCliente.contains(" ") || !nomeCliente.matches("\\A\\p{ASCII}*\\z")) {
         DataOutputStream outToClient = new DataOutputStream(connectionSocket.getOutputStream());
         enviarLinha(outToClient, tipo, "400", "Nome de cliente nao pode conter '" + Constants.SEPARADORCLIENTE
-            + "' ou '" + Constants.SEPARADOR + "' ou espacos em branco", "campo:nomeCliente");
+            + "' ou '" + Constants.SEPARADOR + "' ou caracteres especiais", "campo:nomeCliente");
         return;
       }
     } catch (IOException e) {
@@ -388,23 +413,8 @@ public class GameManager {
       // Inicia keepalive do cliente
       keepAliveCliente(novoCliente, tipo);
 
-      // Notifica todos os outros clientes sobre o novo cliente conectado
-      StringBuilder jogadoresServidor = new StringBuilder();
-
-      synchronized (listaCliente) {
-        Iterator<Cliente> it = listaCliente.values().iterator();
-        while (it.hasNext()) {
-          Cliente cliente = it.next();
-          if (jogadoresServidor.isEmpty()) {
-            jogadoresServidor.append("nome:" + cliente.getNome());
-            continue;
-          }
-          jogadoresServidor.append(Constants.SEPARADORITEM).append("nome:" + cliente.getNome());
-        }
-      }
-
       notificarTodos(Constants.TIPOLISTARJOGADORES, "200", "Jogadores conectados",
-          "jogadores:{" + jogadoresServidor.toString() + "}");
+          gerarListaJogadores());
     }
   }
 
@@ -427,21 +437,7 @@ public class GameManager {
   }
 
   public void listarJogadoresCliente(DataOutputStream outToClient, String tipo) {
-    StringBuilder jogadoresServidor = new StringBuilder();
-
-    synchronized (listaCliente) {
-      Iterator<Cliente> it = listaCliente.values().iterator();
-      while (it.hasNext()) {
-        Cliente cliente = it.next();
-        if (jogadoresServidor.isEmpty()) {
-          jogadoresServidor.append("nome:" + cliente.getNome());
-          continue;
-        }
-        jogadoresServidor.append(Constants.SEPARADORITEM).append("nome:" + cliente.getNome());
-      }
-    }
-
-    enviarLinha(outToClient, tipo, "200", "Jogadores conectados", "jogadores:{" + jogadoresServidor.toString() + "}");
+    enviarLinha(outToClient, tipo, "200", "Jogadores conectados", gerarListaJogadores());
   }
 
   public void entrarPartidaCliente(Cliente cliente, int idPartida, String tipo) {
@@ -703,7 +699,12 @@ public class GameManager {
         cliente.enviarLinha(tipo, "400", "Ataque invalido",
             "campo:[posicaoX" + Constants.SEPARADORATRIBUTO + "posicaoY]");
       } else {
-        cliente.enviarLinha(tipo, "200", "Ataque realizado com sucesso", "");
+        if (deslocamento) {
+          Jogador jogador = partidaAndamento.buscarJogadorPorNome(nomeCliente);
+          posicaoX = jogador.getPosicao().getX();
+          posicaoY = jogador.getPosicao().getY();
+        }
+        cliente.enviarLinha(tipo, "200", "Ataque realizado com sucesso", "x:" + posicaoX + ",y:" + posicaoY);
         // Avança para o próximo turno
         cancelarTimerTurno(partidaAndamento);
         proximoTurnoPartida(partidaAndamento);
@@ -728,7 +729,13 @@ public class GameManager {
         cliente.enviarLinha(tipo, "400", "Sonar invalido",
             "campo:[posicaoX" + Constants.SEPARADORATRIBUTO + "posicaoY]");
       } else {
-        cliente.enviarLinha(tipo, "200", "Sonar utilizado com sucesso", "");
+
+        if (deslocamento) {
+          Jogador jogador = partidaAndamento.buscarJogadorPorNome(nomeCliente);
+          posicaoX = jogador.getPosicao().getX();
+          posicaoY = jogador.getPosicao().getY();
+        }
+        cliente.enviarLinha(tipo, "200", "Sonar utilizado com sucesso", "x:" + posicaoX + ",y:" + posicaoY);
         // Avança para o próximo turno
         cancelarTimerTurno(partidaAndamento);
         proximoTurnoPartida(partidaAndamento);
@@ -808,6 +815,9 @@ public class GameManager {
     // Cancela o keepalive deste cliente
     cancelarKeepAlive(cliente);
     cliente.enviarLinha(tipo, codigo, "Desconectado com sucesso", "nomeCliente:" + nomeCliente);
+    // Notificando todos sobre a saída do cliente
+    notificarTodos(Constants.TIPOLISTARJOGADORES, "200", "Jogadores conectados",
+        gerarListaJogadores());
 
     // Fecha o socket deste cliente
     try {
@@ -882,6 +892,10 @@ public class GameManager {
     if (anterior != null) {
       anterior.cancel(false);
     }
+    int tempo = Constants.TEMPO_KEEPALIVE;
+    if("teste".equals(cliente.getNome())){
+      tempo = 600; // tempo maior para cliente de teste
+    }
     // Agenda novo timeout
     ScheduledFuture<?> futuro = keepAliveScheduler.schedule(() -> {
       try {
@@ -893,7 +907,7 @@ public class GameManager {
         // Remove o handle para evitar vazamento
         keepAliveTimers.remove(chave);
       }
-    }, Constants.TEMPO_KEEPALIVE, TimeUnit.SECONDS);
+    }, tempo, TimeUnit.SECONDS);
     keepAliveTimers.put(chave, futuro);
   }
 

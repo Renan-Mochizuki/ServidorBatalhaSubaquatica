@@ -7,6 +7,9 @@ import java.awt.event.ActionEvent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.io.*;
 import java.net.*;
 import java.util.function.Consumer;
@@ -49,14 +52,93 @@ public class Jogo extends JFrame {
   private static final int BOARD_SIZE = 16;
   private JButton[][] boardButtons = new JButton[BOARD_SIZE][BOARD_SIZE];
   private boolean[][] atacado = new boolean[BOARD_SIZE][BOARD_SIZE];
+  // Painel do tabuleiro (guardado para atualizações em lote)
+  private JPanel boardPanelRef;
+  // Modo buttons e controle de saída expostos como campos para garantir que
+  // fiquem ativos independentemente do turno e possam ser controlados.
+  private JToggleButton btMoverField;
+  private JToggleButton btAtacarField;
+  private JToggleButton btSonarField;
+  private JButton sairPartidaBtn;
+
+  // Área de mensagens específica da partida (mostrada na tela de jogo)
+  private JTextArea gameMessagesArea;
 
   private int startX = 0, startY = 0; // coordenadas iniciais configuráveis
   private int playerX = 0, playerY = 0; // coordenadas atuais do jogador
-  private int moveRange = 3; // alcance de movimento configurável
-  private int attackRange = 3; // alcance de ataque configurável
-  private int sonarRange = 4; // alcance do sonar configurável
+  private int moveRange = 2; // alcance de movimento configurável
+  private int attackRange = 4; // alcance de ataque configurável
+  private int sonarRange = 1; // alcance do sonar configurável
 
-  private boolean playerTurn = true; // controle de turno
+  // Formato de alcance: quadrado (Chebyshev) ou losango (Manhattan)
+  private enum ReachShape {
+    SQUARE, DIAMOND
+  }
+
+  // Permite alterar a forma de alcance para cada modo facilmente
+  private ReachShape moveShape = ReachShape.DIAMOND;
+  private ReachShape attackShape = ReachShape.DIAMOND;
+  private ReachShape sonarShape = ReachShape.SQUARE;
+
+  // Setters para que você possa mudar o alcance e a forma em runtime
+  public void setMoveRange(int r) {
+    moveRange = Math.max(0, r);
+  }
+
+  public void setAttackRange(int r) {
+    attackRange = Math.max(0, r);
+  }
+
+  public void setSonarRange(int r) {
+    sonarRange = Math.max(0, r);
+  }
+
+  public void setMoveShapeToSquare() {
+    moveShape = ReachShape.SQUARE;
+  }
+
+  public void setMoveShapeToDiamond() {
+    moveShape = ReachShape.DIAMOND;
+  }
+
+  public void setAttackShapeToSquare() {
+    attackShape = ReachShape.SQUARE;
+  }
+
+  public void setAttackShapeToDiamond() {
+    attackShape = ReachShape.DIAMOND;
+  }
+
+  public void setSonarShapeToSquare() {
+    sonarShape = ReachShape.SQUARE;
+  }
+
+  public void setSonarShapeToDiamond() {
+    sonarShape = ReachShape.DIAMOND;
+  }
+
+  // Marcações de sonar (permanentes) e contadores de uso do jogador
+  private boolean[][] sonarMarked = new boolean[BOARD_SIZE][BOARD_SIZE];
+  private int sonaresPlaced = 0; // quantos sonares este cliente já colocou (confirmados)
+  private int pendingSonares = 0; // requisições de sonar enviadas aguardando confirmação
+  private static final int MAX_SONARES = 4;
+  // Grid que guarda o id do sonar (0 = nenhum). IDs válidos: 1..MAX_SONARES
+  private int[][] sonarIdGrid = new int[BOARD_SIZE][BOARD_SIZE];
+  // Coordenadas dos sonares deste jogador por id (1..MAX_SONARES)
+  private java.awt.Point[] mySonarCoords = new java.awt.Point[MAX_SONARES + 1];
+  // Flags indicando se um sonar (por id) detectou alguém (para colorir)
+  private boolean[] mySonarDetected = new boolean[MAX_SONARES + 1];
+  // Grid indicando se uma célula de sonar foi marcada como tendo detectado
+  // atividade no turno atual. Essas marcações duram até o próximo TURNO
+  // (quando são resetadas). O servidor envia DETECTADO a cada turno para
+  // sonares que detectaram, então limpamos aqui no início de cada TURNO
+  // e deixamos o servidor re-sinalizar os que devem permanecer detectados.
+  private boolean[][] sonarDetected = new boolean[BOARD_SIZE][BOARD_SIZE];
+
+  // Duração (ms) da marcação visual de ataque (X). Fica visível por 3 segundos.
+  private static final int ATTACK_MARK_MS = 3000;
+
+  private Boolean playerTurn = true; // controle de turno (null = aguardando/reservado)
   private JLabel turnoLabel; // label de status do turno
   private ClientConnection connection; // conexão com servidor (opcional)
 
@@ -66,10 +148,11 @@ public class Jogo extends JFrame {
 
   private Modo modoAtual = Modo.MOVER;
 
-  // Controles de configuração do jogo
-  private JSpinner spStartX, spStartY, spMove, spAttack, spSonar;
-
   private String token;
+
+  // Keepalive scheduler for periodic pings to the server
+  private ScheduledExecutorService keepaliveScheduler = null;
+  private static final long KEEPALIVE_INTERVAL_SECONDS = 120; // 2 minutes
 
   public Jogo() {
     super("Batalha Subaquática");
@@ -91,6 +174,36 @@ public class Jogo extends JFrame {
     cardLayout.show(root, "login");
   }
 
+  // Inicia o agendador de keepalive (se já não iniciado). Envia
+  // periodicamente "KEEPALIVE <jogadorAtual> <token>" ao servidor.
+  private void startKeepalive() {
+    if (keepaliveScheduler != null && !keepaliveScheduler.isShutdown())
+      return; // já rodando
+    keepaliveScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+      Thread t = new Thread(r, "keepalive-sender");
+      t.setDaemon(true);
+      return t;
+    });
+    keepaliveScheduler.scheduleAtFixedRate(() -> {
+      try {
+        if (connection != null && connection.isConnected() && jogadorAtual != null && token != null) {
+          connection.sendLine("KEEPALIVE " + jogadorAtual + " " + token);
+        }
+      } catch (Exception ignore) {
+      }
+    }, KEEPALIVE_INTERVAL_SECONDS, KEEPALIVE_INTERVAL_SECONDS, TimeUnit.SECONDS);
+  }
+
+  private void stopKeepalive() {
+    try {
+      if (keepaliveScheduler != null) {
+        keepaliveScheduler.shutdownNow();
+        keepaliveScheduler = null;
+      }
+    } catch (Exception ignore) {
+    }
+  }
+
   private JPanel criarTelaLogin() {
     JPanel container = new JPanel(new GridBagLayout());
     container.setBorder(new EmptyBorder(24, 24, 24, 24));
@@ -101,13 +214,17 @@ public class Jogo extends JFrame {
     box.setBackground(new Color(245, 248, 255));
     box.setMaximumSize(new Dimension(500, 200));
 
-    JLabel titulo = new JLabel("Bem-vindo à Batalha Subaquática");
+    JLabel titulo = new JLabel("Batalha Subaquática");
     titulo.setAlignmentX(Component.CENTER_ALIGNMENT);
     titulo.setFont(titulo.getFont().deriveFont(Font.BOLD, 20f));
 
     JLabel rotulo = new JLabel("Digite seu nome de jogador:");
-    rotulo.setAlignmentX(Component.LEFT_ALIGNMENT);
     rotulo.setBorder(new EmptyBorder(12, 0, 4, 0));
+    // Envolver o rótulo em um container para forçar alinhamento à esquerda
+    JPanel rotuloContainer = new JPanel(new BorderLayout());
+    rotuloContainer.setAlignmentX(Component.LEFT_ALIGNMENT);
+    rotuloContainer.add(rotulo, BorderLayout.WEST);
+    rotuloContainer.setMaximumSize(new Dimension(Integer.MAX_VALUE, rotulo.getPreferredSize().height));
 
     JTextField campoNome = new JTextField();
     campoNome.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
@@ -157,7 +274,7 @@ public class Jogo extends JFrame {
     });
 
     box.add(titulo);
-    box.add(rotulo);
+    box.add(rotuloContainer);
     box.add(campoNome);
     box.add(Box.createVerticalStrut(8));
     box.add(serverRow);
@@ -206,23 +323,9 @@ public class Jogo extends JFrame {
     // reduzir o espaçamento à esquerda do painel central para diminuir margem
     centro.setBorder(new EmptyBorder(24, 6, 24, 24));
 
-    JLabel placeholder = new JLabel("Área do jogo (Home)");
-    placeholder.setAlignmentX(Component.CENTER_ALIGNMENT);
-    placeholder.setFont(placeholder.getFont().deriveFont(Font.PLAIN, 18f));
-    placeholder.setForeground(new Color(70, 70, 70));
     // Adiciona a caixa de desafios recebidos acima do conteúdo central
     centro.add(leftTopBox);
-
-    JButton irParaJogo = new JButton("Ir para o jogo");
-    irParaJogo.setAlignmentX(Component.CENTER_ALIGNMENT);
-    irParaJogo.addActionListener(e -> {
-      iniciarPartida();
-      cardLayout.show(root, "game");
-    });
-
-    centro.add(placeholder);
     centro.add(Box.createVerticalStrut(12));
-    centro.add(irParaJogo);
 
     // Seção da direita: lista de jogadores com botões
     JPanel direita = new JPanel(new BorderLayout());
@@ -276,6 +379,49 @@ public class Jogo extends JFrame {
     // colocar apenas o topo (infoJogadorLabel) no northContainer; a leftTopBox
     // será mostrada dentro do painel central acima do conteúdo de Home.
     northContainer.add(topo, BorderLayout.CENTER);
+
+    // Botão de sair no canto superior direito da Home. Envia "SAIR <jogador>
+    // <token>"
+    // ao servidor (se conectado), fecha a conexão, limpa o estado do cliente e
+    // retorna para a tela de cadastro.
+    JButton logoutBtn = new JButton("Sair");
+    logoutBtn.addActionListener(e -> {
+      // Envia o comando SAIR ao servidor, se possível, e fecha a conexão.
+      if (connection != null && connection.isConnected()) {
+        connection.sendLine("SAIR " + (jogadorAtual == null ? "" : jogadorAtual) + " " + (token == null ? "" : token));
+        try {
+          connection.close();
+        } catch (IOException ex) {
+          // Ignorar – apenas uma tentativa de limpeza
+        }
+        stopKeepalive();
+      }
+
+      // Limpar estado local do cliente
+      jogadorAtual = null;
+      token = null;
+      connection = null;
+      jogadoresModel.clear();
+      if (mensagensArea != null)
+        mensagensArea.setText("");
+      if (chatInputField != null)
+        chatInputField.setText("");
+      if (infoJogadorLabel != null)
+        infoJogadorLabel.setText("");
+      if (loginStatusLabel != null) {
+        loginStatusLabel.setForeground(new Color(120, 0, 0));
+        loginStatusLabel.setText("Desconectado");
+      }
+      if (loginButton != null)
+        loginButton.setEnabled(true);
+
+      // Resetar botões de desafio/UI relacionada
+      resetChallengeButtons();
+
+      // Voltar para a tela de login
+      cardLayout.show(root, "login");
+    });
+    northContainer.add(logoutBtn, BorderLayout.EAST);
 
     // Caixa de mensagens na parte inferior
     JPanel mensagensPanel = new JPanel(new BorderLayout());
@@ -354,8 +500,50 @@ public class Jogo extends JFrame {
     painelLista.repaint();
   }
 
+  // Reseta o estado dos botões de desafio (volta para "Desafiar") e limpa
+  // indicação de desafio enviado. Deve ser chamado sempre que entramos na
+  // Home ou iniciamos uma partida para garantir consistência da UI.
+  private void resetChallengeButtons() {
+    // Limpa indicação de desafio enviado
+    desafioEnviadoPara = null;
+
+    // Restaura todos os botões para o estado padrão
+    if (playerButtons != null) {
+      for (java.util.Map.Entry<String, JButton> e : playerButtons.entrySet()) {
+        JButton b = e.getValue();
+        if (b != null) {
+          b.setText("Desafiar");
+          b.setEnabled(true);
+        }
+      }
+    }
+
+    // Remove linha de saída de desafio, se existir
+    if (outgoingChallengeRow != null && incomingChallengesPanel != null) {
+      incomingChallengesPanel.remove(outgoingChallengeRow);
+      outgoingChallengeRow = null;
+      incomingChallengesPanel.revalidate();
+      incomingChallengesPanel.repaint();
+    }
+  }
+
+  // Wrapper para mostrar a tela Home garantindo que os botões de desafio
+  // sejam resetados antes de exibir a UI.
+  private void showHome() {
+    resetChallengeButtons();
+    cardLayout.show(root, "home");
+  }
+
+  // Wrapper para mostrar a tela de jogo. Também reseta os botões para evitar
+  // que um estado anterior (ex.: "Enviado") permaneça ao retornar à Home.
+  private void showGame() {
+    resetChallengeButtons();
+    cardLayout.show(root, "game");
+  }
+
   private JPanel criarLinhaJogador(String nome, boolean habilitarBotao) {
     JPanel linha = new JPanel(new BorderLayout());
+    linha.setMaximumSize(new Dimension(Integer.MAX_VALUE, 90));
     linha.setBorder(BorderFactory.createCompoundBorder(
         BorderFactory.createLineBorder(new Color(220, 225, 235)),
         new EmptyBorder(8, 8, 8, 8)));
@@ -430,31 +618,81 @@ public class Jogo extends JFrame {
     tela.setBorder(new EmptyBorder(8, 8, 8, 8));
 
     // Barra superior com configurações
-    JPanel configuracoes = new JPanel();
-    configuracoes.setLayout(new FlowLayout(FlowLayout.LEFT, 8, 4));
+    // Cria uma linha superior que contém: à esquerda os controles de modo e
+    // à direita o label de turno. Abaixo desta linha vem as mensagens da partida.
+    JPanel configuracoesLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
 
     // Seleção de modo
-    JToggleButton btMover = new JToggleButton("Mover");
-    JToggleButton btAtacar = new JToggleButton("Atacar");
-    JToggleButton btSonar = new JToggleButton("Sonar");
+    btMoverField = new JToggleButton("Mover");
+    btAtacarField = new JToggleButton("Atacar");
+    btSonarField = new JToggleButton("Sonar");
     ButtonGroup grupoModo = new ButtonGroup();
-    grupoModo.add(btMover);
-    grupoModo.add(btAtacar);
-    grupoModo.add(btSonar);
-    btMover.setSelected(true);
-    btMover.addActionListener(e -> modoAtual = Modo.MOVER);
-    btAtacar.addActionListener(e -> modoAtual = Modo.ATACAR);
-    btSonar.addActionListener(e -> modoAtual = Modo.SONAR);
+    grupoModo.add(btMoverField);
+    grupoModo.add(btAtacarField);
+    grupoModo.add(btSonarField);
+    btMoverField.setSelected(true);
+    btMoverField.addActionListener(e -> {
+      modoAtual = Modo.MOVER;
+      // atualizar destaques imediatamente ao mudar o modo
+      atualizarTabuleiro();
+    });
+    btAtacarField.addActionListener(e -> {
+      modoAtual = Modo.ATACAR;
+      atualizarTabuleiro();
+    });
+    btSonarField.addActionListener(e -> {
+      modoAtual = Modo.SONAR;
+      atualizarTabuleiro();
+    });
 
-    configuracoes.add(new JLabel(" | Modo:"));
-    configuracoes.add(btMover);
-    configuracoes.add(btAtacar);
-    configuracoes.add(btSonar);
+    configuracoesLeft.add(new JLabel(" | Modo:"));
+    configuracoesLeft.add(btMoverField);
+    configuracoesLeft.add(btAtacarField);
+    configuracoesLeft.add(btSonarField);
 
-    tela.add(configuracoes, BorderLayout.NORTH);
+    // label de turno exibido na mesma linha, à direita
+    turnoLabel = new JLabel("Turno: Jogador");
+    turnoLabel.setFont(turnoLabel.getFont().deriveFont(Font.BOLD, 18f));
+
+    // Painel superior com left (modos) e center (turno centralizado)
+    JPanel topConfigRow = new JPanel(new BorderLayout());
+    topConfigRow.add(configuracoesLeft, BorderLayout.WEST);
+    // painel do centro contendo o label do turno centralizado
+    JPanel centerTurno = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+    centerTurno.setOpaque(false);
+    turnoLabel.setHorizontalAlignment(SwingConstants.CENTER);
+    centerTurno.add(turnoLabel);
+    topConfigRow.add(centerTurno, BorderLayout.CENTER);
+
+    // Criar painel norte que contém a linha de configurações e, abaixo dela,
+    // a caixa de mensagens da partida (evita popups para mensagens do servidor).
+    JPanel northPanel = new JPanel();
+    northPanel.setLayout(new BoxLayout(northPanel, BoxLayout.Y_AXIS));
+    northPanel.add(topConfigRow);
+
+    // Área de mensagens da partida (pequena, rolável)
+    JPanel gameMsgPanel = new JPanel(new BorderLayout());
+    gameMsgPanel.setBorder(new EmptyBorder(6, 8, 6, 8));
+    JLabel gmLabel = new JLabel("Mensagens da partida");
+    gmLabel.setFont(gmLabel.getFont().deriveFont(Font.BOLD, 12f));
+    gameMessagesArea = new JTextArea(3, 40);
+    gameMessagesArea.setEditable(false);
+    gameMessagesArea.setLineWrap(true);
+    gameMessagesArea.setWrapStyleWord(true);
+    JScrollPane gmScroll = new JScrollPane(gameMessagesArea,
+        ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+        ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+    gmScroll.getVerticalScrollBar().setUnitIncrement(12);
+    gameMsgPanel.add(gmLabel, BorderLayout.NORTH);
+    gameMsgPanel.add(gmScroll, BorderLayout.CENTER);
+    northPanel.add(gameMsgPanel);
+
+    tela.add(northPanel, BorderLayout.NORTH);
 
     // Tabuleiro (16x16)
     JPanel boardPanel = new JPanel(new GridLayout(BOARD_SIZE, BOARD_SIZE, 1, 1));
+    // guarda referência para otimizar atualizações em lote
+    boardPanelRef = boardPanel;
     boardPanel.setBorder(new EmptyBorder(8, 8, 8, 8));
     for (int y = 0; y < BOARD_SIZE; y++) {
       for (int x = 0; x < BOARD_SIZE; x++) {
@@ -463,6 +701,9 @@ public class Jogo extends JFrame {
         b.setMargin(new Insets(0, 0, 0, 0));
         b.setPreferredSize(new Dimension(32, 32));
         b.setFocusPainted(false);
+        // Garantir que o background seja pintado corretamente ao mudar cores
+        b.setOpaque(true);
+        b.setBackground(Color.WHITE);
         b.addActionListener(e -> onCellClick(cx, cy));
         boardButtons[y][x] = b;
         boardPanel.add(b);
@@ -470,15 +711,37 @@ public class Jogo extends JFrame {
     }
     tela.add(boardPanel, BorderLayout.CENTER);
 
-    // Barra inferior: status de turno
+    // Barra inferior: ações (sem label de turno — agora mostrado no topo)
     JPanel status = new JPanel(new BorderLayout());
     status.setBorder(new EmptyBorder(4, 8, 4, 8));
-    turnoLabel = new JLabel("Turno: Jogador");
-    status.add(turnoLabel, BorderLayout.WEST);
 
-    JButton voltarHome = new JButton("Voltar para Home");
-    voltarHome.addActionListener(e -> cardLayout.show(root, "home"));
-    status.add(voltarHome, BorderLayout.EAST);
+    // Botão para passar o turno (envia apenas a linha PASSAR <jogadorAtual>
+    // <token>)
+    JButton passarTurno = new JButton("Passar turno");
+    passarTurno.addActionListener(e -> {
+      if (connection != null && connection.isConnected()) {
+        connection.sendLine("PASSAR " + jogadorAtual + " " + token);
+      } else {
+        JOptionPane.showMessageDialog(this, "Sem conexão com o servidor.", "Passar turno", JOptionPane.WARNING_MESSAGE);
+      }
+    });
+
+    // Botão para sair da partida: envia SAIRPARTIDA e volta para a tela Home
+    sairPartidaBtn = new JButton("Sair da partida");
+    sairPartidaBtn.addActionListener(e -> {
+      if (connection != null && connection.isConnected()) {
+        connection.sendLine("SAIRPARTIDA " + jogadorAtual + " " + token);
+      }
+      // Volta para a Home independentemente da conexão (UI)
+      showHome();
+    });
+
+    // Container à direita com botões de ação
+    JPanel rightActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+    rightActions.add(passarTurno);
+    rightActions.add(sairPartidaBtn);
+
+    status.add(rightActions, BorderLayout.EAST);
 
     tela.add(status, BorderLayout.SOUTH);
     return tela;
@@ -489,112 +752,285 @@ public class Jogo extends JFrame {
     for (int y = 0; y < BOARD_SIZE; y++) {
       for (int x = 0; x < BOARD_SIZE; x++) {
         atacado[y][x] = false;
+        sonarMarked[y][x] = false;
+        sonarDetected[y][x] = false;
       }
     }
     playerX = clamp(startX, 0, BOARD_SIZE - 1);
     playerY = clamp(startY, 0, BOARD_SIZE - 1);
     playerTurn = true;
+    sonaresPlaced = 0;
+    pendingSonares = 0;
+    // limpa ids e detections
+    for (int y = 0; y < BOARD_SIZE; y++) {
+      for (int x = 0; x < BOARD_SIZE; x++) {
+        sonarIdGrid[y][x] = 0;
+      }
+    }
+    for (int i = 1; i <= MAX_SONARES; i++) {
+      mySonarCoords[i] = null;
+      mySonarDetected[i] = false;
+    }
     atualizarStatusTurno();
     atualizarTabuleiro();
   }
 
   private void onCellClick(int x, int y) {
-    if (!playerTurn)
-      return; // aguarda inimigo
+    // debug println removed to reduce console overhead
+    // Se não houver conexão com o servidor, bloquear qualquer ação local.
+    if (connection == null || !connection.isConnected()) {
+      JOptionPane.showMessageDialog(this, "Sem conexão com o servidor. Conecte-se para jogar.", "Sem conexão",
+          JOptionPane.WARNING_MESSAGE);
+      return;
+    }
+
+    // Se o turno for nulo (reservado) ou não for o jogador atual, não permite ação
+    if (playerTurn == null || !playerTurn)
+      return; // aguarda inimigo ou reserva
 
     switch (modoAtual) {
       case MOVER:
-        if (alcance(playerX, playerY, x, y) <= moveRange) {
-          playerX = x;
-          playerY = y;
-          if (connection != null && connection.isConnected()) {
-            connection.sendLine("MOVE " + x + " " + y);
-          }
-          atualizarTabuleiro();
+        // Não atualizar posição local aqui — enviamos ao servidor e esperamos a
+        // confirmação/atualização via mensagem MOVER do servidor.
+        if (connection != null && connection.isConnected()) {
+          connection.sendLine("MOVER " + jogadorAtual + " " + token + " " + x + " " + y);
+          // Immediately reset sonar visuals to 'S' (clear detections) and
+          // trust the server to re-send DETECTADO for any sonars that detect.
+          clearAllSonarDetections();
+          // Ainda encerramos o turno localmente: o servidor controlará a próxima
+          // reabilitação via mensagem "TURNO".
           fimDoTurnoDoJogador();
-        } else {
-          beepMsg("Fora do alcance de movimento.");
         }
         break;
       case ATACAR:
-        if (alcance(playerX, playerY, x, y) <= attackRange) {
-          atacado[y][x] = true;
-          if (connection != null && connection.isConnected()) {
-            connection.sendLine("ATTACK " + x + " " + y);
-          }
-          atualizarTabuleiro();
-          // Aqui poderia haver lógica de acerto/erro
+        // Não aplicar efeito local imediatamente — envie ao servidor e aguarde
+        // confirmação (mensagem "ATACAR") para desenhar o X temporário.
+        if (connection != null && connection.isConnected()) {
+          connection.sendLine("ATACAR " + jogadorAtual + " " + token + " " + x + " " + y);
+          // Clear detections so sonars show as 'S' until server says otherwise
+          clearAllSonarDetections();
           fimDoTurnoDoJogador();
-        } else {
-          beepMsg("Fora do alcance de ataque.");
         }
         break;
       case SONAR:
-        if (alcance(playerX, playerY, x, y) <= sonarRange) {
-          if (connection != null && connection.isConnected()) {
-            connection.sendLine("SONAR " + x + " " + y);
-          } else {
-            JOptionPane.showMessageDialog(this,
-                "Sonar ping em (" + x + ", " + y + ")",
-                "Sonar", JOptionPane.INFORMATION_MESSAGE);
-          }
+        // Limite de sonares: soma de confirmados + pendentes
+        if (sonaresPlaced + pendingSonares >= MAX_SONARES) {
+          JOptionPane.showMessageDialog(this, "Limite de " + MAX_SONARES + " sonares atingido.", "Sonar",
+              JOptionPane.INFORMATION_MESSAGE);
+          break;
+        }
+        if (connection != null && connection.isConnected()) {
+          // marcaremos ao receber a confirmação do servidor (mensagem "SONAR").
+          pendingSonares++;
+          connection.sendLine("SONAR " + jogadorAtual + " " + token + " " + x + " " + y);
+          // Clear detections immediately so sonars revert to 'S' until server
+          // sends DETECTADO messages again.
+          clearAllSonarDetections();
           fimDoTurnoDoJogador();
-        } else {
-          beepMsg("Fora do alcance do sonar.");
         }
         break;
     }
   }
 
   private void fimDoTurnoDoJogador() {
-    playerTurn = false;
-    atualizarStatusTurno();
-    // Integração com servidor: informe fim do turno para o servidor decidir.
+    // Do NOT automatically send PASSAR here. Previously this method sent
+    // PASSAR to the server after every action, which caused every move/attack/
+    // sonar to also send a PASSAR. PASSAR should be sent explicitly by the
+    // user (via the "Passar turno" button) or by higher-level game logic.
     if (connection != null && connection.isConnected()) {
-      connection.sendLine("END_TURN");
-      // Aguarde mensagens do servidor; quando receber "TURN_PLAYER", reabilitará no
-      // handler.
+      // After performing an action we block local input and wait for the
+      // server to inform the next turn (server will send a TURNO message).
+      playerTurn = null; // waiting for server
+      atualizarStatusTurno();
     } else {
-      // Offline: simula turno do inimigo por 2 segundos.
-      Timer t = new Timer(2000, e -> {
-        playerTurn = true;
-        atualizarStatusTurno();
-      });
-      t.setRepeats(false);
-      t.start();
+      // No server: block actions and inform the user — cannot proceed offline.
+      playerTurn = false;
+      atualizarStatusTurno();
+      JOptionPane.showMessageDialog(this, "Sem conexão com o servidor. Não é possível prosseguir.", "Erro",
+          JOptionPane.ERROR_MESSAGE);
     }
   }
 
   private void atualizarStatusTurno() {
     if (turnoLabel != null) {
-      turnoLabel.setText(playerTurn ? "Turno: Jogador" : "Turno: Inimigo...");
+      String texto;
+      if (playerTurn == null) {
+        texto = "Turno: aguardando todos jogadores carregarem";
+      } else {
+        texto = playerTurn ? "Turno: Jogador" : "Turno: Inimigo...";
+      }
+      turnoLabel.setText(texto);
     }
     // Opcional: desabilitar o tabuleiro quando não é o turno do jogador
-    boolean enabled = playerTurn;
-    for (int y = 0; y < BOARD_SIZE; y++) {
-      for (int x = 0; x < BOARD_SIZE; x++) {
-        if (boardButtons[y][x] != null)
-          boardButtons[y][x].setEnabled(enabled);
-      }
+    // Não desabilitamos todos os botões do tabuleiro (custa muito). Em vez
+    // disso, mantemos a lógica de aceitação de cliques em onCellClick() que
+    // já verifica o turno, e apenas repintamos o painel do tabuleiro uma vez.
+    if (boardPanelRef != null) {
+      boardPanelRef.repaint();
     }
+
+    // Garantir que os controles de modo e sair da partida permaneçam ativos
+    // mesmo quando não for o turno do jogador — o usuário deve poder preparar
+    // ações ou sair a qualquer momento.
+    if (btMoverField != null)
+      btMoverField.setEnabled(true);
+    if (btAtacarField != null)
+      btAtacarField.setEnabled(true);
+    if (btSonarField != null)
+      btSonarField.setEnabled(true);
+    if (sairPartidaBtn != null)
+      sairPartidaBtn.setEnabled(true);
+    // Garantir que o tabuleiro seja redesenhado (e.g. mostrar/ocultar os
+    // destaques de alcance quando o turno começar/acabar)
+    atualizarTabuleiro();
   }
 
   private void atualizarTabuleiro() {
+    // Quando for o turno do jogador mostramos os destaques de alcance.
+    boolean showReach = (playerTurn != null && playerTurn);
+
     for (int y = 0; y < BOARD_SIZE; y++) {
       for (int x = 0; x < BOARD_SIZE; x++) {
         JButton b = boardButtons[y][x];
         if (b == null)
           continue;
         b.setText("");
+
+        // Prioridade alta: jogador, ataques e sonares já marcados
         if (x == playerX && y == playerY) {
           b.setBackground(new Color(90, 160, 255)); // jogador
-        } else if (atacado[y][x]) {
+          if (jogadorAtual != null && !jogadorAtual.isEmpty()) {
+            String nome = jogadorAtual.trim();
+            if (!nome.isEmpty()) {
+              String first = nome.substring(0, 1).toUpperCase();
+              // If the first letter would be 'S' or 'X' (case-insensitive),
+              // use 'J' instead to avoid duplicate/confusing symbols on the board.
+              if ("S".equals(first) || "X".equals(first)) {
+                b.setText("J");
+              } else {
+                b.setText(first);
+              }
+            }
+          }
+          continue;
+        }
+
+        if (atacado[y][x]) {
           b.setBackground(new Color(240, 120, 120)); // atacado
           b.setText("X");
+          continue;
+        }
+
+        // Prioridade: se a célula foi marcada como DETECTADO pelo servidor,
+        // mostrar '*' imediatamente (mesmo que sonarMarked não esteja sincronizado
+        // por alguma razão). Isso evita que um redraw substitua '*' por 'S'.
+        if (sonarDetected[y][x]) {
+          b.setBackground(new Color(255, 180, 80)); // detectou alguém (destaque)
+          b.setText("*");
+          continue;
+        }
+
+        if (sonarMarked[y][x]) {
+          // Se esta célula foi sinalizada como tendo detectado, destacar
+          if (sonarDetected[y][x]) {
+            b.setBackground(new Color(255, 180, 80)); // detectou alguém (destaque)
+            b.setText("*");
+          } else {
+            // sem detecção: diferenciar sonares próprios de terceiros visualmente
+            int sid = sonarIdGrid[y][x];
+            boolean isMy = false;
+            if (sid >= 1 && sid <= MAX_SONARES) {
+              java.awt.Point mp = mySonarCoords[sid];
+              if (mp != null && mp.x == x && mp.y == y)
+                isMy = true;
+            }
+            b.setBackground(isMy ? new Color(200, 230, 150) : new Color(230, 230, 150));
+            // Mostrar símbolo S quando não detectado; servidor DETECTADO irá
+            // alternar para '*' até que o jogador local realize uma ação
+            // que limpe as detecções. Reexibir 'S' por padrão quando não há '*'.
+            b.setText("S");
+          }
+          continue;
+        }
+
+        // Se chegou até aqui a célula está 'limpa' — considerar destaques de alcance
+        boolean inMove = false, inAttack = false, inSonarReach = false;
+        if (showReach) {
+          inMove = isInRange(playerX, playerY, x, y, moveRange, moveShape);
+          inAttack = isInRange(playerX, playerY, x, y, attackRange, attackShape);
+          inSonarReach = isInRange(playerX, playerY, x, y, sonarRange, sonarShape);
+        }
+
+        // Determinar cor com base no modo atualmente selecionado.
+        // Exibir somente o alcance do modo ativo como destaque forte. Não
+        // mostramos os alcances de outros modos para evitar confusão.
+        if (showReach) {
+          switch (modoAtual) {
+            case MOVER:
+              if (inMove) {
+                b.setBackground(new Color(120, 200, 255)); // movimento
+              } else {
+                b.setBackground(Color.WHITE);
+              }
+              break;
+            case ATACAR:
+              if (inAttack) {
+                b.setBackground(new Color(255, 120, 120)); // ataque
+              } else {
+                b.setBackground(Color.WHITE);
+              }
+              break;
+            case SONAR:
+              if (inSonarReach) {
+                b.setBackground(new Color(255, 200, 120)); // sonar
+              } else {
+                b.setBackground(Color.WHITE);
+              }
+              break;
+            default:
+              b.setBackground(Color.WHITE);
+          }
         } else {
           b.setBackground(Color.WHITE);
         }
       }
+    }
+  }
+
+  // Limpa todas as marcações de DETECTADO localmente (faz com que sonares
+  // voltem a aparecer como 'S' até que o servidor reenvie DETECTADO). Deve ser
+  // chamada imediatamente quando o jogador realiza uma ação local (mover/
+  // atacar/sonar) para confiar no servidor como autoridade.
+  private void clearAllSonarDetections() {
+    for (int yy = 0; yy < BOARD_SIZE; yy++) {
+      for (int xx = 0; xx < BOARD_SIZE; xx++) {
+        sonarDetected[yy][xx] = false;
+      }
+    }
+    // Atualiza a interface imediatamente
+    atualizarTabuleiro();
+    try {
+      if (boardPanelRef != null) {
+        boardPanelRef.revalidate();
+        boardPanelRef.repaint();
+      }
+    } catch (Exception ignore) {
+    }
+  }
+
+  // Verifica se a célula (x,y) está dentro do alcance do centro (cx,cy) para
+  // o range e a forma fornecidos.
+  private boolean isInRange(int cx, int cy, int x, int y, int range, ReachShape shape) {
+    if (range <= 0)
+      return false;
+    int dx = Math.abs(cx - x);
+    int dy = Math.abs(cy - y);
+    if (shape == ReachShape.SQUARE) {
+      // Chebyshev distance -> quadrado (max)
+      return Math.max(dx, dy) <= range;
+    } else {
+      // DIAMOND: Manhattan distance -> losango
+      return (dx + dy) <= range;
     }
   }
 
@@ -614,18 +1050,8 @@ public class Jogo extends JFrame {
     atualizarListaJogadores();
   }
 
-  private int alcance(int x1, int y1, int x2, int y2) {
-    // Distância Chebyshev: max(|dx|, |dy|)
-    return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
-  }
-
   private int clamp(int v, int min, int max) {
     return Math.max(min, Math.min(max, v));
-  }
-
-  private void beepMsg(String msg) {
-    Toolkit.getDefaultToolkit().beep();
-    JOptionPane.showMessageDialog(this, msg, "Aviso", JOptionPane.WARNING_MESSAGE);
   }
 
   // === Integração com servidor ===
@@ -665,8 +1091,16 @@ public class Jogo extends JFrame {
           loginStatusLabel.setText("Falha ao conectar: " + erro);
           loginButton.setEnabled(true);
         } else {
-          loginStatusLabel.setForeground(new Color(0, 120, 0));
-          loginStatusLabel.setText("Conectado. Aguardando resposta do servidor...");
+          // Só atualiza para "Conectado..." se ainda estivermos no estado de
+          // conexão — assim não sobrescrevemos uma mensagem que o servidor
+          // já tenha enviado (por exemplo: falha no cadastro).
+          if (loginStatusLabel != null) {
+            String atual = loginStatusLabel.getText();
+            if (atual == null || atual.startsWith("Conectando")) {
+              loginStatusLabel.setForeground(new Color(0, 120, 0));
+              loginStatusLabel.setText("Conectado. Aguardando resposta do servidor...");
+            }
+          }
 
         }
       }
@@ -706,6 +1140,22 @@ public class Jogo extends JFrame {
     } else {
       JOptionPane.showMessageDialog(this, "Sem conexão com o servidor.", "Chat",
           JOptionPane.WARNING_MESSAGE);
+    }
+  }
+
+  // Append a message to the partida (game) message area. If the game area
+  // is not available (e.g. user is on Home), fall back to the main mensagens
+  // area so the message isn't lost.
+  private void appendGameMessage(String msg) {
+    if (msg == null)
+      return;
+    if (gameMessagesArea != null) {
+      gameMessagesArea.append(msg + "\n");
+      gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
+    } else if (mensagensArea != null) {
+      // fallback so messages are visible even if game UI not open
+      mensagensArea.append(msg + "\n");
+      mensagensArea.setCaretPosition(mensagensArea.getDocument().getLength());
     }
   }
 
@@ -757,7 +1207,7 @@ public class Jogo extends JFrame {
       String comandoServer = parts.length > 0 ? parts[0] : "";
       String codigoServer = parts.length > 1 ? parts[1] : "";
       String textoServer = parts.length > 2 ? parts[2] : "";
-      String valoresServer = parts.length > 3 ? parts[3] : ""; // valores adicionais (ex.: lista CSV)
+      String valoresServer = parts.length > 3 ? parts[3] : "";
 
       System.out.println("Recebido do servidor: " + line);
 
@@ -767,7 +1217,7 @@ public class Jogo extends JFrame {
           if ("201".equals(codigoServer)) {
             // Sucesso: avançar para HOME
             atualizarListaJogadores();
-            cardLayout.show(root, "home");
+            showHome();
             if (loginButton != null)
               loginButton.setEnabled(true);
             if (loginStatusLabel != null)
@@ -776,18 +1226,22 @@ public class Jogo extends JFrame {
             // Salvando o token
             token = separarValores(valoresServer, "token");
 
+            // Inicia envio periódico de KEEPALIVE (apenas após termos token)
+            if (token != null && !token.isEmpty()) {
+              startKeepalive();
+            }
+
             // Após entrar na Home, solicitar lista atual de jogadores
             if (connection != null && connection.isConnected()) {
               connection.sendLine("LISTARJOGADORES");
             }
           } else {
-            // Falha: exibir textoServer (mensagem do backend) ou padrão
+            // Falha: mostrar a mensagem do servidor na label de status (sem popup)
             String motivo = (textoServer != null && !textoServer.isEmpty()) ? textoServer : "Cadastro não realizado";
             if (loginStatusLabel != null) {
               loginStatusLabel.setForeground(new Color(120, 0, 0));
               loginStatusLabel.setText(motivo);
             }
-            JOptionPane.showMessageDialog(this, motivo, "Cadastro não realizado", JOptionPane.WARNING_MESSAGE);
             if (loginButton != null)
               loginButton.setEnabled(true);
           }
@@ -925,54 +1379,450 @@ public class Jogo extends JFrame {
           break;
         }
         case "CHATPARTIDA": {
+          String fromP = separarValores(valoresServer, "nome");
+          String msgP = separarValores(valoresServer, "mensagem");
+          String displayP = (fromP != null && !fromP.isEmpty()) ? ("[Partida] " + fromP + ": " + msgP)
+              : ("[Partida] " + msgP);
+          if (displayP != null && !displayP.isEmpty()) {
+            appendGameMessage(displayP);
+          }
           break;
         }
         case "PRONTOPARTIDA": {
           break;
         }
         case "RESERVADOPARTIDA": {
+          // O servidor reservou a partida e fornece coordenadas iniciais (x, y).
+          String xStr = separarValores(valoresServer, "x");
+          String yStr = separarValores(valoresServer, "y");
+          int rx = 0, ry = 0;
+          try {
+            rx = Integer.parseInt(xStr == null ? "0" : xStr);
+          } catch (NumberFormatException ignore) {
+          }
+          try {
+            ry = Integer.parseInt(yStr == null ? "0" : yStr);
+          } catch (NumberFormatException ignore) {
+          }
+
+          // Reinicia estado básico do tabuleiro (posicional)
+          iniciarPartida();
+          // Posiciona jogador conforme informado pelo servidor
+          playerX = clamp(rx, 0, BOARD_SIZE - 1);
+          playerY = clamp(ry, 0, BOARD_SIZE - 1);
+          // Turno ainda indefinido até o servidor enviar TURNO
+          playerTurn = null;
+          atualizarStatusTurno();
+          atualizarTabuleiro();
+
+          // Mostra a tela do jogo
+          showGame();
+
+          // Depois de carregar a tela, notifica o servidor que estamos prontos
+          if (connection != null && connection.isConnected()) {
+            connection.sendLine("PRONTO " + jogadorAtual + " " + token);
+          }
           break;
         }
         case "INICIOPARTIDA": {
+          // O servidor indica que a partida foi iniciada (todos prontos).
+          appendGameMessage("Partida iniciada");
+          // Certifica-se de mostrar a tela do jogo
+          showGame();
+          // Durante o início o servidor enviará o TURNO logo em seguida
           break;
         }
         case "MOVER": {
+          // Servidor informa movimento (x,y).
+          // Se o servidor respondeu 408 => posição inválida: não aplicar nada
+          // e reabilitar o jogador para tentar novamente. Para qualquer outro
+          // código consideramos confirmação e aplicamos a posição.
+          String xStr = separarValores(valoresServer, "x");
+          String yStr = separarValores(valoresServer, "y");
+          if ("400".equals(codigoServer)) {
+            // Movimento inválido: reabilita o jogador para tentar novamente
+            playerTurn = true;
+            atualizarStatusTurno();
+            if (gameMessagesArea != null) {
+              gameMessagesArea.append("Movimento inválido.\n");
+              gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
+            }
+          } else {
+            // Apenas aplique a nova posição se o servidor realmente forneceu
+            // as coordenadas x e y; caso contrário ignoramos para evitar zerar
+            // a posição (0,0) quando o servidor não retornou valores.
+            if (xStr != null && yStr != null) {
+              try {
+                int mx = Integer.parseInt(xStr);
+                int my = Integer.parseInt(yStr);
+                playerX = clamp(mx, 0, BOARD_SIZE - 1);
+                playerY = clamp(my, 0, BOARD_SIZE - 1);
+                atualizarTabuleiro();
+              } catch (NumberFormatException nfe) {
+                if (gameMessagesArea != null) {
+                  gameMessagesArea
+                      .append("Movimento confirmado, mas coordenadas inválidas recebidas; ignorando atualização.\n");
+                  gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
+                }
+              }
+            } else {
+              if (gameMessagesArea != null) {
+                gameMessagesArea
+                    .append("Movimento confirmado, mas servidor não retornou coordenadas; posição mantida.\n");
+                gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
+              }
+            }
+          }
           break;
         }
         case "ATACAR": {
+          // Servidor indica um ataque em (x,y). Tratamos código 408 como ataque
+          // inválido (não faz nada); outros códigos causam a marcação temporária.
+          if ("400".equals(codigoServer)) {
+            playerTurn = true;
+            atualizarStatusTurno();
+            if (gameMessagesArea != null) {
+              gameMessagesArea.append("Ataque inválido.\n");
+              gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
+            }
+            break;
+          }
+          String xStr = separarValores(valoresServer, "x");
+          String yStr = separarValores(valoresServer, "y");
+          int ax = 0, ay = 0;
+          try {
+            ax = Integer.parseInt(xStr == null ? "0" : xStr);
+          } catch (NumberFormatException ignore) {
+          }
+          try {
+            ay = Integer.parseInt(yStr == null ? "0" : yStr);
+          } catch (NumberFormatException ignore) {
+          }
+          if (ax >= 0 && ax < BOARD_SIZE && ay >= 0 && ay < BOARD_SIZE) {
+            // Marca o ataque temporariamente na UI por ATTACK_MARK_MS milissegundos.
+            final int fx = ax;
+            final int fy = ay;
+            atacado[fy][fx] = true;
+            atualizarTabuleiro();
+            // Timer para limpar a marcação após o período definido
+            Timer clearTimer = new Timer(ATTACK_MARK_MS, ev -> {
+              atacado[fy][fx] = false;
+              atualizarTabuleiro();
+              ((Timer) ev.getSource()).stop();
+            });
+            clearTimer.setRepeats(false);
+            clearTimer.start();
+          }
           break;
         }
         case "SONAR": {
+          // Simplified sonar handling: trust the server.
+          // If the placement was invalid, re-enable the player and fix counters.
+          if ("400".equals(codigoServer)) {
+            // Position invalid for sonar. The server may omit the "nome"
+            // field in the error; restore local state so the player can
+            // retry (similar to MOVER/ATACAR handling).
+            if (pendingSonares > 0)
+              pendingSonares--;
+            playerTurn = true;
+            atualizarStatusTurno();
+            if (gameMessagesArea != null) {
+              gameMessagesArea.append("Posição de sonar inválida.\n");
+              gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
+            }
+            break;
+          }
+
+          String sonarBy = separarValores(valoresServer, "nome");
+          String sxStr = separarValores(valoresServer, "x");
+          String syStr = separarValores(valoresServer, "y");
+          int sx = 0, sy = 0;
+          try {
+            sx = Integer.parseInt(sxStr == null ? "0" : sxStr);
+          } catch (NumberFormatException ignore) {
+          }
+          try {
+            sy = Integer.parseInt(syStr == null ? "0" : syStr);
+          } catch (NumberFormatException ignore) {
+          }
+
+          if (sx >= 0 && sx < BOARD_SIZE && sy >= 0 && sy < BOARD_SIZE) {
+            // Marca o sonar; não alteramos sonarDetected aqui. Confiamos no
+            // servidor para enviar DETECTADO quando um sonar detectar alguém.
+            sonarMarked[sy][sx] = true;
+
+            // Se for meu sonar, ajustar contadores mínimos para manter UX
+            if (sonarBy != null && sonarBy.equals(jogadorAtual)) {
+              if (pendingSonares > 0)
+                pendingSonares--;
+              sonaresPlaced++;
+            }
+
+            atualizarTabuleiro();
+          }
           break;
         }
         case "PASSAR": {
+          // O servidor confirma que o jogador passou o turno ou notifica passagem.
+          if ("200".equals(codigoServer)) {
+            appendGameMessage("Turno passado.");
+            // Aguardamos o servidor enviar o próximo TURNO para reabilitar quem for
+          } else {
+            // Mostra falha se houver
+            appendGameMessage("Falha ao passar turno: " + textoServer);
+          }
           break;
         }
         case "SAIRPARTIDA": {
+          // Servidor confirmou saída de partida — voltar para a Home e limpar estado
+          if ("200".equals(codigoServer)) {
+            appendGameMessage("Você saiu da partida.");
+            playerTurn = false;
+            atualizarStatusTurno();
+            cardLayout.show(root, "home");
+          } else {
+            // informar erro
+            String txt = textoServer != null && !textoServer.isEmpty() ? textoServer : "Erro ao sair da partida";
+            if (gameMessagesArea != null) {
+              gameMessagesArea.append(txt + "\n");
+              gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
+            }
+          }
           break;
         }
         case "SAIR": {
+          // Servidor confirmou logout ou desconexão
+          if ("200".equals(codigoServer) || "204".equals(codigoServer) || "409".equals(codigoServer)) {
+            try {
+              // stop keepalive before closing connection
+              stopKeepalive();
+              if (connection != null) {
+                connection.close();
+              }
+            } catch (Exception ignore) {
+            }
+            jogadorAtual = null;
+            token = null;
+            connection = null;
+            jogadoresModel.clear();
+            if (mensagensArea != null) {
+              mensagensArea.setText("");
+            }
+            if (chatInputField != null) {
+              chatInputField.setText("");
+            }
+            if (infoJogadorLabel != null) {
+              infoJogadorLabel.setText("");
+            }
+            if (loginStatusLabel != null) {
+              loginStatusLabel.setForeground(new Color(120, 0, 0));
+              loginStatusLabel.setText("Desconectado");
+            }
+            if (loginButton != null) {
+              loginButton.setEnabled(true);
+            }
+            cardLayout.show(root, "login");
+          } else {
+            JOptionPane.showMessageDialog(this,
+                textoServer != null && !textoServer.isEmpty() ? textoServer : "Servidor pediu saída", "Sair",
+                JOptionPane.INFORMATION_MESSAGE);
+          }
           break;
         }
         case "DETECTADO": {
+          // Servidor informa que um sonar detectou alguém. Espera-se um campo
+          // num:<id> indicando qual sonar (id) detectou.
+          String numStr = separarValores(valoresServer, "num");
+          String sxStr = separarValores(valoresServer, "x");
+          String syStr = separarValores(valoresServer, "y");
+          int sx = -1, sy = -1;
+          try {
+            sx = Integer.parseInt(sxStr == null ? "-1" : sxStr);
+            sy = Integer.parseInt(syStr == null ? "-1" : syStr);
+          } catch (NumberFormatException e) {
+            // dados inválidos — ignorar
+            break;
+          }
+
+          // marca o sonar como existente e sinaliza detecção nesta célula
+          sonarMarked[sy][sx] = true;
+          sonarDetected[sy][sx] = true;
+
+          // Forçar o texto e cor da célula imediatamente para '*' (detecção)
+          try {
+            JButton cellBtn = boardButtons[sy][sx];
+            if (cellBtn != null) {
+              cellBtn.setBackground(new Color(255, 180, 80));
+              cellBtn.setText("*");
+            }
+          } catch (Exception ignore) {
+          }
+
+          // se o servidor forneceu um id, registre-o; também atualize
+          // as coordenadas locais desse id se for do próprio jogador
+          if (numStr != null) {
+            try {
+              int id = Integer.parseInt(numStr);
+              if (id >= 1 && id <= MAX_SONARES) {
+                sonarIdGrid[sy][sx] = id;
+                java.awt.Point prev = mySonarCoords[id];
+                if (prev == null || prev.x != sx || prev.y != sy) {
+                  mySonarCoords[id] = new java.awt.Point(sx, sy);
+                }
+                // marque também a flag por id (útil para lógica antiga)
+                mySonarDetected[id] = true;
+              }
+            } catch (NumberFormatException ignore) {
+            }
+          }
+
+          atualizarTabuleiro();
+          // Forçar atualização visual imediata do painel do tabuleiro
+          try {
+            if (boardPanelRef != null) {
+              boardPanelRef.revalidate();
+              boardPanelRef.repaint();
+            }
+          } catch (Exception ignore) {
+          }
+          // Log simples para ajudar debug se o evento foi recebido
+          System.out.println("DETECTADO: sonar at (" + sx + "," + sy + ") num=" + numStr);
+          if (gameMessagesArea != null) {
+            String msg = "Sonar detectou atividade";
+            if (numStr != null)
+              msg += " id:" + numStr;
+            msg += ".";
+            appendGameMessage(msg);
+          }
           break;
         }
         case "ACERTO": {
+          // Servidor notifica que um míssil acertou jogadores. Valores:
+          // jogadores:{nome:...,x:...,y:...;...}
+          String lista = separarValores(valoresServer, "jogadores");
+          String[] items = separarLista(lista);
+          if (items != null && items.length > 0) {
+            for (String it : items) {
+              String nome = separarValores(it, "nome");
+              String sx = separarValores(it, "x");
+              String sy = separarValores(it, "y");
+              String linha = "Míssil acertou: " + (nome == null ? "?" : nome) + " em (" + sx + "," + sy + ")";
+              if (gameMessagesArea != null) {
+                gameMessagesArea.append(linha + "\n");
+                gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
+              }
+              // Marcação visual opcional para o dono do míssil
+              try {
+                int ix = Integer.parseInt(sx == null ? "-1" : sx);
+                int iy = Integer.parseInt(sy == null ? "-1" : sy);
+                if (ix >= 0 && ix < BOARD_SIZE && iy >= 0 && iy < BOARD_SIZE) {
+                  // Marcar o local atingido temporariamente e limpar após ATTACK_MARK_MS
+                  final int fx = ix;
+                  final int fy = iy;
+                  atacado[fy][fx] = true;
+                  atualizarTabuleiro();
+                  Timer clearTimer = new Timer(ATTACK_MARK_MS, ev -> {
+                    atacado[fy][fx] = false;
+                    atualizarTabuleiro();
+                    ((Timer) ev.getSource()).stop();
+                  });
+                  clearTimer.setRepeats(false);
+                  clearTimer.start();
+                }
+              } catch (NumberFormatException ignore) {
+              }
+            }
+          }
           break;
         }
         case "MORTE": {
+          // Servidor avisa que este jogador foi morto (valores incluem dono:<nome>)
+          String dono = separarValores(valoresServer, "dono");
+          String mensagem = textoServer != null && !textoServer.isEmpty() ? textoServer
+              : "Você foi acertado por um míssil";
+          if (dono != null && !dono.isEmpty())
+            mensagem += " por " + dono;
+          if (gameMessagesArea != null) {
+            gameMessagesArea.append("Você foi morto: " + mensagem + "\n");
+            gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
+          }
+          // Voltar para a Home e desabilitar ações locais
+          playerTurn = false;
+          atualizarStatusTurno();
+          showHome();
           break;
         }
         case "VITORIA": {
+          // Recebeu notificação de vitória pessoal
+          String msg = textoServer != null && !textoServer.isEmpty() ? textoServer : "Você venceu!";
+          // Mostrar popup de vitória
+          JOptionPane.showMessageDialog(this, msg, "Vitória", JOptionPane.INFORMATION_MESSAGE);
+          // Também registrar na caixa de mensagens da partida, se existir
+          if (gameMessagesArea != null) {
+            gameMessagesArea.append("Vitória: " + msg + "\n");
+            gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
+          }
+          // Voltar para a Home
+          playerTurn = false;
+          atualizarStatusTurno();
+          showHome();
           break;
         }
         case "FIMPARTIDA": {
+          // Partida finalizada para todos; valor deve conter vencedor:<nome>
+          String vencedor = separarValores(valoresServer, "vencedor");
+          String msgFim = (vencedor != null && !vencedor.isEmpty()) ? ("Partida finalizada. Vencedor: " + vencedor)
+              : "Partida finalizada.";
+          if (gameMessagesArea != null) {
+            gameMessagesArea.append(msgFim + "\n");
+            gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
+          }
+          // Reset UI
+          playerTurn = false;
+          atualizarStatusTurno();
+          showHome();
           break;
         }
         case "TURNO": {
+          // NOTE: Do not clear `sonarDetected` or `mySonarDetected` here.
+          // The client now follows a server-trust model: DETECTADO messages
+          // from the server explicitly set detection marks and those marks
+          // are retained until the local player performs an action that
+          // clears them (e.g. MOVER/ATACAR/SONAR). Clearing here caused
+          // detections to disappear prematurely when a TURNO message was
+          // sent shortly after DETECTADO.
+
+          if ("200".equals(codigoServer)) {
+            String nomeJogadorTurno = separarValores(valoresServer, "turno");
+            boolean isPlayerTurn = jogadorAtual != null && jogadorAtual.equals(nomeJogadorTurno);
+            playerTurn = isPlayerTurn;
+            atualizarStatusTurno();
+          } else {
+            // Pode ser um TURNO com código diferente (ex.: 408) indicando que o
+            // turno expirou para o jogador anterior. Exibe mensagem e atualiza estado.
+            String nomeTurno = separarValores(valoresServer, "nome");
+            if (nomeTurno != null && nomeTurno.equals(jogadorAtual)) {
+              playerTurn = false;
+            }
+            atualizarStatusTurno();
+            String aviso = textoServer != null && !textoServer.isEmpty() ? textoServer : "Turno expirou";
+            if (gameMessagesArea != null) {
+              gameMessagesArea.append("Turno: " + aviso + "\n");
+              gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
+            }
+          }
           break;
         }
         case "ERRO": {
+          // Exibir mensagem simples de erro enviada pelo servidor
+          String msg = (textoServer != null && !textoServer.isEmpty()) ? textoServer
+              : separarValores(valoresServer, "mensagem");
+          if (msg == null || msg.isEmpty())
+            msg = "Erro do servidor";
+          if (gameMessagesArea != null) {
+            gameMessagesArea.append("Erro do servidor: " + msg + "\n");
+            gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
+          }
           break;
         }
         case "DESCONECTADO": {
@@ -982,6 +1832,7 @@ public class Jogo extends JFrame {
             }
           } catch (Exception ignore) {
           }
+          stopKeepalive();
           jogadorAtual = null;
           token = null;
           connection = null;
@@ -1002,35 +1853,18 @@ public class Jogo extends JFrame {
           if (loginButton != null) {
             loginButton.setEnabled(true);
           }
-          // Mostrar popup informando desconexão e voltar para tela de login
-          JOptionPane.showMessageDialog(this, "Desconectado por inatividade", "Desconectado",
-              JOptionPane.WARNING_MESSAGE);
+          // Registrar a desconexão na área de mensagens da partida e voltar para
+          // a tela de login (sem popup)
+          if (gameMessagesArea != null) {
+            gameMessagesArea.append("Desconectado por inatividade\n");
+            gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
+          }
           cardLayout.show(root, "login");
           break;
         }
         default: {
           break;
         }
-
-        // } else if ("JOGO".equalsIgnoreCase(comandoServer) &&
-        // "START".equalsIgnoreCase(codigoServer)) {
-        // // Iniciar a partida e ir para tela de jogo
-        // iniciarPartida();
-        // cardLayout.show(root, "game");
-        // } else if (line.equals("TURN_PLAYER")) {
-        // // Servidor devolveu o turno ao jogador
-        // playerTurn = true;
-        // atualizarStatusTurno();
-        // } else if (line.equals("TURN_ENEMY")) {
-        // playerTurn = false;
-        // atualizarStatusTurno();
-        // } else {
-        // // fallback: logar mensagem crua na área de mensagens para debug
-        // if (mensagensArea != null) {
-        // mensagensArea.append("Servidor: " + line + "\n");
-        // mensagensArea.setCaretPosition(mensagensArea.getDocument().getLength());
-        // }
-        // }
       }
     });
   }
