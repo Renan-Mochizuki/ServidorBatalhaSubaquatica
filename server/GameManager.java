@@ -119,6 +119,8 @@ public class GameManager {
       while (itDispositivos.hasNext()) {
         String todosJogadoresDetectados = "";
         DispositivoProximidade dispositivo = itDispositivos.next();
+        int xDispositivo = dispositivo.getPosicao().getX();
+        int yDispositivo = dispositivo.getPosicao().getY();
 
         // Pega a lista de todos jogadores próximos do dispositivo
         List<Jogador> jogadoresDetectados = jogoPartida.detectarJogadores(dispositivo);
@@ -132,7 +134,8 @@ public class GameManager {
           todosJogadoresDetectados += "nome:" + jogadorDetectado.getNome();
         }
         if (!todosJogadoresDetectados.isEmpty()) {
-          String valor = "num:" + dispositivo.getNum() + Constants.SEPARADORATRIBUTO + "jogadores:{"
+          String valor = "num:" + dispositivo.getNum() + Constants.SEPARADORATRIBUTO + "x:" + xDispositivo
+              + Constants.SEPARADORATRIBUTO + "y:" + yDispositivo + Constants.SEPARADORATRIBUTO + "jogadores:{"
               + todosJogadoresDetectados + "}";
           notificarJogadorPartida(dispositivo.getJogadorDono(), Constants.TIPODETECTADO, "200",
               "Jogadores detectados pelo dispositivo " + dispositivo.getNum(), valor);
@@ -889,6 +892,10 @@ public class GameManager {
     if (anterior != null) {
       anterior.cancel(false);
     }
+    int tempo = Constants.TEMPO_KEEPALIVE;
+    if("teste".equals(cliente.getNome())){
+      tempo = 600; // tempo maior para cliente de teste
+    }
     // Agenda novo timeout
     ScheduledFuture<?> futuro = keepAliveScheduler.schedule(() -> {
       try {
@@ -900,7 +907,7 @@ public class GameManager {
         // Remove o handle para evitar vazamento
         keepAliveTimers.remove(chave);
       }
-    }, Constants.TEMPO_KEEPALIVE, TimeUnit.SECONDS);
+    }, tempo, TimeUnit.SECONDS);
     keepAliveTimers.put(chave, futuro);
   }
 

@@ -7,6 +7,9 @@ import java.awt.event.ActionEvent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.io.*;
 import java.net.*;
 import java.util.function.Consumer;
@@ -125,6 +128,12 @@ public class Jogo extends JFrame {
   private java.awt.Point[] mySonarCoords = new java.awt.Point[MAX_SONARES + 1];
   // Flags indicando se um sonar (por id) detectou alguém (para colorir)
   private boolean[] mySonarDetected = new boolean[MAX_SONARES + 1];
+  // Grid indicando se uma célula de sonar foi marcada como tendo detectado
+  // atividade no turno atual. Essas marcações duram até o próximo TURNO
+  // (quando são resetadas). O servidor envia DETECTADO a cada turno para
+  // sonares que detectaram, então limpamos aqui no início de cada TURNO
+  // e deixamos o servidor re-sinalizar os que devem permanecer detectados.
+  private boolean[][] sonarDetected = new boolean[BOARD_SIZE][BOARD_SIZE];
 
   // Duração (ms) da marcação visual de ataque (X). Fica visível por 3 segundos.
   private static final int ATTACK_MARK_MS = 3000;
@@ -140,6 +149,10 @@ public class Jogo extends JFrame {
   private Modo modoAtual = Modo.MOVER;
 
   private String token;
+
+  // Keepalive scheduler for periodic pings to the server
+  private ScheduledExecutorService keepaliveScheduler = null;
+  private static final long KEEPALIVE_INTERVAL_SECONDS = 120; // 2 minutes
 
   public Jogo() {
     super("Batalha Subaquática");
@@ -159,6 +172,36 @@ public class Jogo extends JFrame {
     jogadoresModel.addElement("Diego");
 
     cardLayout.show(root, "login");
+  }
+
+  // Inicia o agendador de keepalive (se já não iniciado). Envia
+  // periodicamente "KEEPALIVE <jogadorAtual> <token>" ao servidor.
+  private void startKeepalive() {
+    if (keepaliveScheduler != null && !keepaliveScheduler.isShutdown())
+      return; // já rodando
+    keepaliveScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+      Thread t = new Thread(r, "keepalive-sender");
+      t.setDaemon(true);
+      return t;
+    });
+    keepaliveScheduler.scheduleAtFixedRate(() -> {
+      try {
+        if (connection != null && connection.isConnected() && jogadorAtual != null && token != null) {
+          connection.sendLine("KEEPALIVE " + jogadorAtual + " " + token);
+        }
+      } catch (Exception ignore) {
+      }
+    }, KEEPALIVE_INTERVAL_SECONDS, KEEPALIVE_INTERVAL_SECONDS, TimeUnit.SECONDS);
+  }
+
+  private void stopKeepalive() {
+    try {
+      if (keepaliveScheduler != null) {
+        keepaliveScheduler.shutdownNow();
+        keepaliveScheduler = null;
+      }
+    } catch (Exception ignore) {
+    }
   }
 
   private JPanel criarTelaLogin() {
@@ -351,6 +394,7 @@ public class Jogo extends JFrame {
         } catch (IOException ex) {
           // Ignorar – apenas uma tentativa de limpeza
         }
+        stopKeepalive();
       }
 
       // Limpar estado local do cliente
@@ -709,6 +753,7 @@ public class Jogo extends JFrame {
       for (int x = 0; x < BOARD_SIZE; x++) {
         atacado[y][x] = false;
         sonarMarked[y][x] = false;
+        sonarDetected[y][x] = false;
       }
     }
     playerX = clamp(startX, 0, BOARD_SIZE - 1);
@@ -749,6 +794,9 @@ public class Jogo extends JFrame {
         // confirmação/atualização via mensagem MOVER do servidor.
         if (connection != null && connection.isConnected()) {
           connection.sendLine("MOVER " + jogadorAtual + " " + token + " " + x + " " + y);
+          // Immediately reset sonar visuals to 'S' (clear detections) and
+          // trust the server to re-send DETECTADO for any sonars that detect.
+          clearAllSonarDetections();
           // Ainda encerramos o turno localmente: o servidor controlará a próxima
           // reabilitação via mensagem "TURNO".
           fimDoTurnoDoJogador();
@@ -759,6 +807,8 @@ public class Jogo extends JFrame {
         // confirmação (mensagem "ATACAR") para desenhar o X temporário.
         if (connection != null && connection.isConnected()) {
           connection.sendLine("ATACAR " + jogadorAtual + " " + token + " " + x + " " + y);
+          // Clear detections so sonars show as 'S' until server says otherwise
+          clearAllSonarDetections();
           fimDoTurnoDoJogador();
         }
         break;
@@ -773,6 +823,9 @@ public class Jogo extends JFrame {
           // marcaremos ao receber a confirmação do servidor (mensagem "SONAR").
           pendingSonares++;
           connection.sendLine("SONAR " + jogadorAtual + " " + token + " " + x + " " + y);
+          // Clear detections immediately so sonars revert to 'S' until server
+          // sends DETECTADO messages again.
+          clearAllSonarDetections();
           fimDoTurnoDoJogador();
         }
         break;
@@ -859,18 +912,33 @@ public class Jogo extends JFrame {
           continue;
         }
 
+        // Prioridade: se a célula foi marcada como DETECTADO pelo servidor,
+        // mostrar '*' imediatamente (mesmo que sonarMarked não esteja sincronizado
+        // por alguma razão). Isso evita que um redraw substitua '*' por 'S'.
+        if (sonarDetected[y][x]) {
+          b.setBackground(new Color(255, 180, 80)); // detectou alguém (destaque)
+          b.setText("*");
+          continue;
+        }
+
         if (sonarMarked[y][x]) {
-          int sid = sonarIdGrid[y][x];
-          if (sid > 0) {
-            if (sid >= 1 && sid <= MAX_SONARES && mySonarDetected[sid]) {
-              b.setBackground(new Color(255, 180, 80)); // detectou alguém (destaque)
-            } else {
-              b.setBackground(new Color(200, 230, 150)); // sonar próprio
-            }
-            b.setText(String.valueOf(sid));
+          // Se esta célula foi sinalizada como tendo detectado, destacar
+          if (sonarDetected[y][x]) {
+            b.setBackground(new Color(255, 180, 80)); // detectou alguém (destaque)
+            b.setText("*");
           } else {
-            b.setBackground(new Color(230, 230, 150)); // sonar outro
-            b.setText("S");
+            // sem detecção: diferenciar sonares próprios de terceiros visualmente
+            int sid = sonarIdGrid[y][x];
+            boolean isMy = false;
+            if (sid >= 1 && sid <= MAX_SONARES) {
+              java.awt.Point mp = mySonarCoords[sid];
+              if (mp != null && mp.x == x && mp.y == y)
+                isMy = true;
+            }
+            b.setBackground(isMy ? new Color(200, 230, 150) : new Color(230, 230, 150));
+            // Mostrar símbolo S quando não detectado; servidor DETECTADO irá
+            // alternar para '*' até o próximo TURNO, que limpa sonarDetected.
+            // b.setText("S");
           }
           continue;
         }
@@ -919,6 +987,27 @@ public class Jogo extends JFrame {
     }
   }
 
+  // Limpa todas as marcações de DETECTADO localmente (faz com que sonares
+  // voltem a aparecer como 'S' até que o servidor reenvie DETECTADO). Deve ser
+  // chamada imediatamente quando o jogador realiza uma ação local (mover/
+  // atacar/sonar) para confiar no servidor como autoridade.
+  private void clearAllSonarDetections() {
+    for (int yy = 0; yy < BOARD_SIZE; yy++) {
+      for (int xx = 0; xx < BOARD_SIZE; xx++) {
+        sonarDetected[yy][xx] = false;
+      }
+    }
+    // Atualiza a interface imediatamente
+    atualizarTabuleiro();
+    try {
+      if (boardPanelRef != null) {
+        boardPanelRef.revalidate();
+        boardPanelRef.repaint();
+      }
+    } catch (Exception ignore) {
+    }
+  }
+
   // Verifica se a célula (x,y) está dentro do alcance do centro (cx,cy) para
   // o range e a forma fornecidos.
   private boolean isInRange(int cx, int cy, int x, int y, int range, ReachShape shape) {
@@ -949,11 +1038,6 @@ public class Jogo extends JFrame {
       }
     }
     atualizarListaJogadores();
-  }
-
-  private int alcance(int x1, int y1, int x2, int y2) {
-    // Distância Chebyshev: max(|dx|, |dy|)
-    return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
   }
 
   private int clamp(int v, int min, int max) {
@@ -1049,6 +1133,22 @@ public class Jogo extends JFrame {
     }
   }
 
+  // Append a message to the partida (game) message area. If the game area
+  // is not available (e.g. user is on Home), fall back to the main mensagens
+  // area so the message isn't lost.
+  private void appendGameMessage(String msg) {
+    if (msg == null)
+      return;
+    if (gameMessagesArea != null) {
+      gameMessagesArea.append(msg + "\n");
+      gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
+    } else if (mensagensArea != null) {
+      // fallback so messages are visible even if game UI not open
+      mensagensArea.append(msg + "\n");
+      mensagensArea.setCaretPosition(mensagensArea.getDocument().getLength());
+    }
+  }
+
   // Função que separa o valor de um campo específico da linha
   private String separarValores(String line, String campo) {
     // Adiciona uma vírgula no final para facilitar o parsing do último campo
@@ -1115,6 +1215,11 @@ public class Jogo extends JFrame {
 
             // Salvando o token
             token = separarValores(valoresServer, "token");
+
+            // Inicia envio periódico de KEEPALIVE (apenas após termos token)
+            if (token != null && !token.isEmpty()) {
+              startKeepalive();
+            }
 
             // Após entrar na Home, solicitar lista atual de jogadores
             if (connection != null && connection.isConnected()) {
@@ -1268,9 +1373,8 @@ public class Jogo extends JFrame {
           String msgP = separarValores(valoresServer, "mensagem");
           String displayP = (fromP != null && !fromP.isEmpty()) ? ("[Partida] " + fromP + ": " + msgP)
               : ("[Partida] " + msgP);
-          if (mensagensArea != null && displayP != null && !displayP.isEmpty()) {
-            mensagensArea.append(displayP + "\n");
-            mensagensArea.setCaretPosition(mensagensArea.getDocument().getLength());
+          if (displayP != null && !displayP.isEmpty()) {
+            appendGameMessage(displayP);
           }
           break;
         }
@@ -1312,10 +1416,7 @@ public class Jogo extends JFrame {
         }
         case "INICIOPARTIDA": {
           // O servidor indica que a partida foi iniciada (todos prontos).
-          if (mensagensArea != null) {
-            mensagensArea.append("Partida iniciada\n");
-            mensagensArea.setCaretPosition(mensagensArea.getDocument().getLength());
-          }
+          appendGameMessage("Partida iniciada");
           // Certifica-se de mostrar a tela do jogo
           showGame();
           // Durante o início o servidor enviará o TURNO logo em seguida
@@ -1405,9 +1506,8 @@ public class Jogo extends JFrame {
           break;
         }
         case "SONAR": {
-          // Servidor indica um sonar em (x,y). Sonar fica permanente.
-          // Código 408 significa posição inválida => não fazer nada e reabilitar
-          // jogador e ajustar pendentes.
+          // Simplified sonar handling: trust the server.
+          // If the placement was invalid, re-enable the player and fix counters.
           if ("400".equals(codigoServer)) {
             String by = separarValores(valoresServer, "nome");
             if (by != null && by.equals(jogadorAtual)) {
@@ -1422,8 +1522,8 @@ public class Jogo extends JFrame {
             }
             break;
           }
+
           String sonarBy = separarValores(valoresServer, "nome");
-          String numStr = separarValores(valoresServer, "num");
           String sxStr = separarValores(valoresServer, "x");
           String syStr = separarValores(valoresServer, "y");
           int sx = 0, sy = 0;
@@ -1435,51 +1535,21 @@ public class Jogo extends JFrame {
             sy = Integer.parseInt(syStr == null ? "0" : syStr);
           } catch (NumberFormatException ignore) {
           }
+
           if (sx >= 0 && sx < BOARD_SIZE && sy >= 0 && sy < BOARD_SIZE) {
+            // Marca o sonar e garante que a célula não esteja marcada como
+            // detectada localmente — o servidor re-enviará DETECTADO quando
+            // apropriado.
             sonarMarked[sy][sx] = true;
-            // Se o servidor forneceu um id (num), use-o; caso contrário, para
-            // sonares próprios, atribuímos o próximo id livre localmente.
-            int assignedId = 0;
-            if (numStr != null) {
-              try {
-                assignedId = Integer.parseInt(numStr);
-              } catch (NumberFormatException ignore) {
-              }
+            sonarDetected[sy][sx] = false;
+
+            // Se for meu sonar, ajustar contadores mínimos para manter UX
+            if (sonarBy != null && sonarBy.equals(jogadorAtual)) {
+              if (pendingSonares > 0)
+                pendingSonares--;
+              sonaresPlaced++;
             }
 
-            // Se for um sonar próprio, garanta um id (local) quando necessário
-            if (sonarBy != null && sonarBy.equals(jogadorAtual)) {
-              if (assignedId <= 0) {
-                // encontrar o menor id livre entre 1..MAX_SONARES
-                for (int i = 1; i <= MAX_SONARES; i++) {
-                  if (mySonarCoords[i] == null) {
-                    assignedId = i;
-                    break;
-                  }
-                }
-              }
-              if (assignedId > 0 && assignedId <= MAX_SONARES) {
-                // se o id já existia em outra posição, limpe a posição anterior
-                java.awt.Point prev = mySonarCoords[assignedId];
-                if (prev != null) {
-                  sonarIdGrid[prev.y][prev.x] = 0;
-                }
-                // salvar id e coordenadas locais
-                sonarIdGrid[sy][sx] = assignedId;
-                mySonarCoords[assignedId] = new java.awt.Point(sx, sy);
-                mySonarDetected[assignedId] = false;
-                if (pendingSonares > 0)
-                  pendingSonares--;
-                sonaresPlaced++;
-              }
-            } else {
-              // Sonar de outro jogador: se o servidor forneceu um id, registre-o
-              // no grid para manter consistência (ajuda DETECTADO a localizar).
-              if (assignedId > 0 && assignedId <= MAX_SONARES) {
-                sonarIdGrid[sy][sx] = assignedId;
-              }
-            }
-            // Atualiza contadores: se o sonar for deste jogador, consumimos um pendente
             atualizarTabuleiro();
           }
           break;
@@ -1487,27 +1557,18 @@ public class Jogo extends JFrame {
         case "PASSAR": {
           // O servidor confirma que o jogador passou o turno ou notifica passagem.
           if ("200".equals(codigoServer)) {
-            if (mensagensArea != null) {
-              mensagensArea.append("Turno passado.\n");
-              mensagensArea.setCaretPosition(mensagensArea.getDocument().getLength());
-            }
+            appendGameMessage("Turno passado.");
             // Aguardamos o servidor enviar o próximo TURNO para reabilitar quem for
           } else {
             // Mostra falha se houver
-            if (mensagensArea != null) {
-              mensagensArea.append("Falha ao passar turno: " + textoServer + "\n");
-              mensagensArea.setCaretPosition(mensagensArea.getDocument().getLength());
-            }
+            appendGameMessage("Falha ao passar turno: " + textoServer);
           }
           break;
         }
         case "SAIRPARTIDA": {
           // Servidor confirmou saída de partida — voltar para a Home e limpar estado
           if ("200".equals(codigoServer)) {
-            if (mensagensArea != null) {
-              mensagensArea.append("Você saiu da partida.\n");
-              mensagensArea.setCaretPosition(mensagensArea.getDocument().getLength());
-            }
+            appendGameMessage("Você saiu da partida.");
             playerTurn = false;
             atualizarStatusTurno();
             cardLayout.show(root, "home");
@@ -1525,6 +1586,8 @@ public class Jogo extends JFrame {
           // Servidor confirmou logout ou desconexão
           if ("200".equals(codigoServer) || "204".equals(codigoServer) || "409".equals(codigoServer)) {
             try {
+              // stop keepalive before closing connection
+              stopKeepalive();
               if (connection != null) {
                 connection.close();
               }
@@ -1562,51 +1625,66 @@ public class Jogo extends JFrame {
           // Servidor informa que um sonar detectou alguém. Espera-se um campo
           // num:<id> indicando qual sonar (id) detectou.
           String numStr = separarValores(valoresServer, "num");
+          String sxStr = separarValores(valoresServer, "x");
+          String syStr = separarValores(valoresServer, "y");
+          int sx = -1, sy = -1;
+          try {
+            sx = Integer.parseInt(sxStr == null ? "-1" : sxStr);
+            sy = Integer.parseInt(syStr == null ? "-1" : syStr);
+          } catch (NumberFormatException e) {
+            // dados inválidos — ignorar
+            break;
+          }
+
+          // marca o sonar como existente e sinaliza detecção nesta célula
+          sonarMarked[sy][sx] = true;
+          sonarDetected[sy][sx] = true;
+
+          // Forçar o texto e cor da célula imediatamente para '*' (detecção)
+          try {
+            JButton cellBtn = boardButtons[sy][sx];
+            if (cellBtn != null) {
+              cellBtn.setBackground(new Color(255, 180, 80));
+              cellBtn.setText("*");
+            }
+          } catch (Exception ignore) {
+          }
+
+          // se o servidor forneceu um id, registre-o; também atualize
+          // as coordenadas locais desse id se for do próprio jogador
           if (numStr != null) {
             try {
               int id = Integer.parseInt(numStr);
               if (id >= 1 && id <= MAX_SONARES) {
-                // Primeiro tente usar a posição conhecida localmente
-                java.awt.Point p = mySonarCoords[id];
-                // Se não conhecermos a posição localmente, tente buscar no grid
-                if (p == null) {
-                  outer: for (int yy = 0; yy < BOARD_SIZE; yy++) {
-                    for (int xx = 0; xx < BOARD_SIZE; xx++) {
-                      if (sonarIdGrid[yy][xx] == id) {
-                        p = new java.awt.Point(xx, yy);
-                        // garantir consistência local
-                        mySonarCoords[id] = p;
-                        break outer;
-                      }
-                    }
-                  }
+                sonarIdGrid[sy][sx] = id;
+                java.awt.Point prev = mySonarCoords[id];
+                if (prev == null || prev.x != sx || prev.y != sy) {
+                  mySonarCoords[id] = new java.awt.Point(sx, sy);
                 }
-
-                if (p != null) {
-                  mySonarDetected[id] = true;
-                  // garante que a célula esteja marcada como sonar
-                  sonarMarked[p.y][p.x] = true;
-                  // garantir que o id esteja refletido no grid
-                  sonarIdGrid[p.y][p.x] = id;
-                  atualizarTabuleiro();
-                  if (gameMessagesArea != null) {
-                    gameMessagesArea.append("Sonar detectou atividade no seu dispositivo (id:" + id + ").\n");
-                    gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
-                  }
-                } else {
-                  // Não encontramos posição conhecida para esse id — log para depuração
-                  System.out.println("DETECTADO recebido para id=" + id + " mas posição desconhecida");
-                  if (gameMessagesArea != null) {
-                    gameMessagesArea.append("Detectado (id:" + id + "): posição desconhecida no cliente.\n");
-                    gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
-                  }
-                }
-              } else {
-                System.out.println("DETECTADO com id fora do intervalo: " + numStr);
+                // marque também a flag por id (útil para lógica antiga)
+                mySonarDetected[id] = true;
               }
             } catch (NumberFormatException ignore) {
-              System.out.println("DETECTADO: id inválido -> " + numStr);
             }
+          }
+
+          atualizarTabuleiro();
+          // Forçar atualização visual imediata do painel do tabuleiro
+          try {
+            if (boardPanelRef != null) {
+              boardPanelRef.revalidate();
+              boardPanelRef.repaint();
+            }
+          } catch (Exception ignore) {
+          }
+          // Log simples para ajudar debug se o evento foi recebido
+          System.out.println("DETECTADO: sonar at (" + sx + "," + sy + ") num=" + numStr);
+          if (gameMessagesArea != null) {
+            String msg = "Sonar detectou atividade";
+            if (numStr != null)
+              msg += " id:" + numStr;
+            msg += ".";
+            appendGameMessage(msg);
           }
           break;
         }
@@ -1698,6 +1776,16 @@ public class Jogo extends JFrame {
           break;
         }
         case "TURNO": {
+          // Ao iniciar novo turno, limpamos as marcações de detecção anteriores.
+          for (int yy = 0; yy < BOARD_SIZE; yy++) {
+            for (int xx = 0; xx < BOARD_SIZE; xx++) {
+              sonarDetected[yy][xx] = false;
+            }
+          }
+          for (int i = 1; i <= MAX_SONARES; i++) {
+            mySonarDetected[i] = false;
+          }
+
           if ("200".equals(codigoServer)) {
             String nomeJogadorTurno = separarValores(valoresServer, "turno");
             boolean isPlayerTurn = jogadorAtual != null && jogadorAtual.equals(nomeJogadorTurno);
@@ -1738,6 +1826,7 @@ public class Jogo extends JFrame {
             }
           } catch (Exception ignore) {
           }
+          stopKeepalive();
           jogadorAtual = null;
           token = null;
           connection = null;
