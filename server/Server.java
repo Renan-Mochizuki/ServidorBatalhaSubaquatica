@@ -513,10 +513,19 @@ public class Server {
   }
 
   public static void main(String[] args) throws Exception {
-    // Declarando o socket do servidor
-    // Código tirado dos slides
-    ServerSocket welcomeSocket = new ServerSocket(Constants.PORTA_SERVIDOR);
-    System.out.println("Servidor iniciado na porta " + Constants.PORTA_SERVIDOR);
+    ServerSocket welcomeSocket = null;
+    // Código para testar várias portas se a porta padrão já estiver em uso
+    int basePort = Constants.PORTA_SERVIDOR;
+    int tryPort = basePort;
+    for (int i = 0; i < 100; i++) {
+      try {
+        welcomeSocket = new ServerSocket(tryPort);
+        System.out.println("Servidor iniciado na porta " + tryPort);
+        break;
+      } catch (java.net.BindException be) {
+        tryPort++;
+      }
+    }
 
     try {
       Server server = new Server();
@@ -536,7 +545,11 @@ public class Server {
     } catch (Exception e) {
       e.printStackTrace();
     } finally {
-      welcomeSocket.close();
+      try {
+        welcomeSocket.close();
+      } catch (IOException ioe) {
+        // Ignora
+      }
     }
   }
 }
