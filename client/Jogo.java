@@ -63,9 +63,56 @@ public class Jogo extends JFrame {
 
   private int startX = 0, startY = 0; // coordenadas iniciais configuráveis
   private int playerX = 0, playerY = 0; // coordenadas atuais do jogador
-  private int moveRange = 3; // alcance de movimento configurável
-  private int attackRange = 3; // alcance de ataque configurável
-  private int sonarRange = 4; // alcance do sonar configurável
+  private int moveRange = 2; // alcance de movimento configurável
+  private int attackRange = 4; // alcance de ataque configurável
+  private int sonarRange = 1; // alcance do sonar configurável
+
+  // Formato de alcance: quadrado (Chebyshev) ou losango (Manhattan)
+  private enum ReachShape {
+    SQUARE, DIAMOND
+  }
+
+  // Permite alterar a forma de alcance para cada modo facilmente
+  private ReachShape moveShape = ReachShape.DIAMOND;
+  private ReachShape attackShape = ReachShape.DIAMOND;
+  private ReachShape sonarShape = ReachShape.SQUARE;
+
+  // Setters para que você possa mudar o alcance e a forma em runtime
+  public void setMoveRange(int r) {
+    moveRange = Math.max(0, r);
+  }
+
+  public void setAttackRange(int r) {
+    attackRange = Math.max(0, r);
+  }
+
+  public void setSonarRange(int r) {
+    sonarRange = Math.max(0, r);
+  }
+
+  public void setMoveShapeToSquare() {
+    moveShape = ReachShape.SQUARE;
+  }
+
+  public void setMoveShapeToDiamond() {
+    moveShape = ReachShape.DIAMOND;
+  }
+
+  public void setAttackShapeToSquare() {
+    attackShape = ReachShape.SQUARE;
+  }
+
+  public void setAttackShapeToDiamond() {
+    attackShape = ReachShape.DIAMOND;
+  }
+
+  public void setSonarShapeToSquare() {
+    sonarShape = ReachShape.SQUARE;
+  }
+
+  public void setSonarShapeToDiamond() {
+    sonarShape = ReachShape.DIAMOND;
+  }
 
   // Marcações de sonar (permanentes) e contadores de uso do jogador
   private boolean[][] sonarMarked = new boolean[BOARD_SIZE][BOARD_SIZE];
@@ -79,9 +126,8 @@ public class Jogo extends JFrame {
   // Flags indicando se um sonar (por id) detectou alguém (para colorir)
   private boolean[] mySonarDetected = new boolean[MAX_SONARES + 1];
 
-  // Duração (ms) da marcação visual de ataque (X). Reduza para tornar a animação
-  // mais rápida. Valor padrão antes: 3000.
-  private static final int ATTACK_MARK_MS = 600;
+  // Duração (ms) da marcação visual de ataque (X). Fica visível por 3 segundos.
+  private static final int ATTACK_MARK_MS = 3000;
 
   private Boolean playerTurn = true; // controle de turno (null = aguardando/reservado)
   private JLabel turnoLabel; // label de status do turno
@@ -453,6 +499,7 @@ public class Jogo extends JFrame {
 
   private JPanel criarLinhaJogador(String nome, boolean habilitarBotao) {
     JPanel linha = new JPanel(new BorderLayout());
+    linha.setMaximumSize(new Dimension(Integer.MAX_VALUE, 90));
     linha.setBorder(BorderFactory.createCompoundBorder(
         BorderFactory.createLineBorder(new Color(220, 225, 235)),
         new EmptyBorder(8, 8, 8, 8)));
@@ -527,8 +574,9 @@ public class Jogo extends JFrame {
     tela.setBorder(new EmptyBorder(8, 8, 8, 8));
 
     // Barra superior com configurações
-    JPanel configuracoes = new JPanel();
-    configuracoes.setLayout(new FlowLayout(FlowLayout.LEFT, 8, 4));
+    // Cria uma linha superior que contém: à esquerda os controles de modo e
+    // à direita o label de turno. Abaixo desta linha vem as mensagens da partida.
+    JPanel configuracoesLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
 
     // Seleção de modo
     btMoverField = new JToggleButton("Mover");
@@ -539,21 +587,44 @@ public class Jogo extends JFrame {
     grupoModo.add(btAtacarField);
     grupoModo.add(btSonarField);
     btMoverField.setSelected(true);
-    btMoverField.addActionListener(e -> modoAtual = Modo.MOVER);
-    btAtacarField.addActionListener(e -> modoAtual = Modo.ATACAR);
-    btSonarField.addActionListener(e -> modoAtual = Modo.SONAR);
+    btMoverField.addActionListener(e -> {
+      modoAtual = Modo.MOVER;
+      // atualizar destaques imediatamente ao mudar o modo
+      atualizarTabuleiro();
+    });
+    btAtacarField.addActionListener(e -> {
+      modoAtual = Modo.ATACAR;
+      atualizarTabuleiro();
+    });
+    btSonarField.addActionListener(e -> {
+      modoAtual = Modo.SONAR;
+      atualizarTabuleiro();
+    });
 
-    configuracoes.add(new JLabel(" | Modo:"));
-    configuracoes.add(btMoverField);
-    configuracoes.add(btAtacarField);
-    configuracoes.add(btSonarField);
+    configuracoesLeft.add(new JLabel(" | Modo:"));
+    configuracoesLeft.add(btMoverField);
+    configuracoesLeft.add(btAtacarField);
+    configuracoesLeft.add(btSonarField);
 
-    // Criar painel norte que contém as configurações e, abaixo delas, a caixa de
-    // mensagens da partida (evita popups para mensagens do servidor durante a
-    // partida).
+    // label de turno exibido na mesma linha, à direita
+    turnoLabel = new JLabel("Turno: Jogador");
+    turnoLabel.setFont(turnoLabel.getFont().deriveFont(Font.BOLD, 18f));
+
+    // Painel superior com left (modos) e center (turno centralizado)
+    JPanel topConfigRow = new JPanel(new BorderLayout());
+    topConfigRow.add(configuracoesLeft, BorderLayout.WEST);
+    // painel do centro contendo o label do turno centralizado
+    JPanel centerTurno = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+    centerTurno.setOpaque(false);
+    turnoLabel.setHorizontalAlignment(SwingConstants.CENTER);
+    centerTurno.add(turnoLabel);
+    topConfigRow.add(centerTurno, BorderLayout.CENTER);
+
+    // Criar painel norte que contém a linha de configurações e, abaixo dela,
+    // a caixa de mensagens da partida (evita popups para mensagens do servidor).
     JPanel northPanel = new JPanel();
     northPanel.setLayout(new BoxLayout(northPanel, BoxLayout.Y_AXIS));
-    northPanel.add(configuracoes);
+    northPanel.add(topConfigRow);
 
     // Área de mensagens da partida (pequena, rolável)
     JPanel gameMsgPanel = new JPanel(new BorderLayout());
@@ -586,6 +657,9 @@ public class Jogo extends JFrame {
         b.setMargin(new Insets(0, 0, 0, 0));
         b.setPreferredSize(new Dimension(32, 32));
         b.setFocusPainted(false);
+        // Garantir que o background seja pintado corretamente ao mudar cores
+        b.setOpaque(true);
+        b.setBackground(Color.WHITE);
         b.addActionListener(e -> onCellClick(cx, cy));
         boardButtons[y][x] = b;
         boardPanel.add(b);
@@ -593,11 +667,9 @@ public class Jogo extends JFrame {
     }
     tela.add(boardPanel, BorderLayout.CENTER);
 
-    // Barra inferior: status de turno
+    // Barra inferior: ações (sem label de turno — agora mostrado no topo)
     JPanel status = new JPanel(new BorderLayout());
     status.setBorder(new EmptyBorder(4, 8, 4, 8));
-    turnoLabel = new JLabel("Turno: Jogador");
-    status.add(turnoLabel, BorderLayout.WEST);
 
     // Botão para passar o turno (envia apenas a linha PASSAR <jogadorAtual>
     // <token>)
@@ -673,57 +745,35 @@ public class Jogo extends JFrame {
 
     switch (modoAtual) {
       case MOVER:
-        if (alcance(playerX, playerY, x, y) <= moveRange) {
-          // Não atualizar posição local aqui — enviamos ao servidor e esperamos a
-          // confirmação/atualização via mensagem MOVER do servidor.
-          if (connection != null && connection.isConnected()) {
-            connection.sendLine("MOVER " + jogadorAtual + " " + token + " " + x + " " + y);
-            // Ainda encerramos o turno localmente: o servidor controlará a próxima
-            // reabilitação via mensagem "TURNO".
-            fimDoTurnoDoJogador();
-          } else {
-            // Conexão verificada antes, mas caso venha a ocorrer, bloqueia ação.
-            JOptionPane.showMessageDialog(this, "Sem conexão com o servidor. Conecte-se para jogar.",
-                "Sem conexão", JOptionPane.WARNING_MESSAGE);
-          }
-        } else {
-          beepMsg("Fora do alcance de movimento.");
+        // Não atualizar posição local aqui — enviamos ao servidor e esperamos a
+        // confirmação/atualização via mensagem MOVER do servidor.
+        if (connection != null && connection.isConnected()) {
+          connection.sendLine("MOVER " + jogadorAtual + " " + token + " " + x + " " + y);
+          // Ainda encerramos o turno localmente: o servidor controlará a próxima
+          // reabilitação via mensagem "TURNO".
+          fimDoTurnoDoJogador();
         }
         break;
       case ATACAR:
-        if (alcance(playerX, playerY, x, y) <= attackRange) {
-          // Não aplicar efeito local imediatamente — envie ao servidor e aguarde
-          // confirmação (mensagem "ATACAR") para desenhar o X temporário.
-          if (connection != null && connection.isConnected()) {
-            connection.sendLine("ATACAR " + jogadorAtual + " " + token + " " + x + " " + y);
-            fimDoTurnoDoJogador();
-          } else {
-            JOptionPane.showMessageDialog(this, "Sem conexão com o servidor. Conecte-se para jogar.",
-                "Sem conexão", JOptionPane.WARNING_MESSAGE);
-          }
-        } else {
-          beepMsg("Fora do alcance de ataque.");
+        // Não aplicar efeito local imediatamente — envie ao servidor e aguarde
+        // confirmação (mensagem "ATACAR") para desenhar o X temporário.
+        if (connection != null && connection.isConnected()) {
+          connection.sendLine("ATACAR " + jogadorAtual + " " + token + " " + x + " " + y);
+          fimDoTurnoDoJogador();
         }
         break;
       case SONAR:
-        if (alcance(playerX, playerY, x, y) <= sonarRange) {
-          // Limite de sonares: soma de confirmados + pendentes
-          if (sonaresPlaced + pendingSonares >= MAX_SONARES) {
-            JOptionPane.showMessageDialog(this, "Limite de " + MAX_SONARES + " sonares atingido.", "Sonar",
-                JOptionPane.INFORMATION_MESSAGE);
-            break;
-          }
-          if (connection != null && connection.isConnected()) {
-            // marcaremos ao receber a confirmação do servidor (mensagem "SONAR").
-            pendingSonares++;
-            connection.sendLine("SONAR " + jogadorAtual + " " + token + " " + x + " " + y);
-            fimDoTurnoDoJogador();
-          } else {
-            JOptionPane.showMessageDialog(this, "Sem conexão com o servidor. Conecte-se para jogar.",
-                "Sem conexão", JOptionPane.WARNING_MESSAGE);
-          }
-        } else {
-          beepMsg("Fora do alcance do sonar.");
+        // Limite de sonares: soma de confirmados + pendentes
+        if (sonaresPlaced + pendingSonares >= MAX_SONARES) {
+          JOptionPane.showMessageDialog(this, "Limite de " + MAX_SONARES + " sonares atingido.", "Sonar",
+              JOptionPane.INFORMATION_MESSAGE);
+          break;
+        }
+        if (connection != null && connection.isConnected()) {
+          // marcaremos ao receber a confirmação do servidor (mensagem "SONAR").
+          pendingSonares++;
+          connection.sendLine("SONAR " + jogadorAtual + " " + token + " " + x + " " + y);
+          fimDoTurnoDoJogador();
         }
         break;
     }
@@ -752,7 +802,7 @@ public class Jogo extends JFrame {
     if (turnoLabel != null) {
       String texto;
       if (playerTurn == null) {
-        texto = "Turno: aguardando...";
+        texto = "Turno: aguardando todos jogadores carregarem";
       } else {
         texto = playerTurn ? "Turno: Jogador" : "Turno: Inimigo...";
       }
@@ -777,29 +827,41 @@ public class Jogo extends JFrame {
       btSonarField.setEnabled(true);
     if (sairPartidaBtn != null)
       sairPartidaBtn.setEnabled(true);
+    // Garantir que o tabuleiro seja redesenhado (e.g. mostrar/ocultar os
+    // destaques de alcance quando o turno começar/acabar)
+    atualizarTabuleiro();
   }
 
   private void atualizarTabuleiro() {
+    // Quando for o turno do jogador mostramos os destaques de alcance.
+    boolean showReach = (playerTurn != null && playerTurn);
+
     for (int y = 0; y < BOARD_SIZE; y++) {
       for (int x = 0; x < BOARD_SIZE; x++) {
         JButton b = boardButtons[y][x];
         if (b == null)
           continue;
         b.setText("");
+
+        // Prioridade alta: jogador, ataques e sonares já marcados
         if (x == playerX && y == playerY) {
           b.setBackground(new Color(90, 160, 255)); // jogador
-          // Mostrar a primeira letra do nome do jogador no quadrado
           if (jogadorAtual != null && !jogadorAtual.isEmpty()) {
             String first = jogadorAtual.substring(0, 1).toUpperCase();
             b.setText(first);
           }
-        } else if (atacado[y][x]) {
+          continue;
+        }
+
+        if (atacado[y][x]) {
           b.setBackground(new Color(240, 120, 120)); // atacado
           b.setText("X");
-        } else if (sonarMarked[y][x]) {
+          continue;
+        }
+
+        if (sonarMarked[y][x]) {
           int sid = sonarIdGrid[y][x];
           if (sid > 0) {
-            // Sonar próprio identificado por id
             if (sid >= 1 && sid <= MAX_SONARES && mySonarDetected[sid]) {
               b.setBackground(new Color(255, 180, 80)); // detectou alguém (destaque)
             } else {
@@ -807,14 +869,69 @@ public class Jogo extends JFrame {
             }
             b.setText(String.valueOf(sid));
           } else {
-            // Sonar de outro jogador: marcador simples
-            b.setBackground(new Color(230, 230, 150)); // sonar
+            b.setBackground(new Color(230, 230, 150)); // sonar outro
             b.setText("S");
+          }
+          continue;
+        }
+
+        // Se chegou até aqui a célula está 'limpa' — considerar destaques de alcance
+        boolean inMove = false, inAttack = false, inSonarReach = false;
+        if (showReach) {
+          inMove = isInRange(playerX, playerY, x, y, moveRange, moveShape);
+          inAttack = isInRange(playerX, playerY, x, y, attackRange, attackShape);
+          inSonarReach = isInRange(playerX, playerY, x, y, sonarRange, sonarShape);
+        }
+
+        // Determinar cor com base no modo atualmente selecionado.
+        // Exibir somente o alcance do modo ativo como destaque forte. Não
+        // mostramos os alcances de outros modos para evitar confusão.
+        if (showReach) {
+          switch (modoAtual) {
+            case MOVER:
+              if (inMove) {
+                b.setBackground(new Color(120, 200, 255)); // movimento
+              } else {
+                b.setBackground(Color.WHITE);
+              }
+              break;
+            case ATACAR:
+              if (inAttack) {
+                b.setBackground(new Color(255, 120, 120)); // ataque
+              } else {
+                b.setBackground(Color.WHITE);
+              }
+              break;
+            case SONAR:
+              if (inSonarReach) {
+                b.setBackground(new Color(255, 200, 120)); // sonar
+              } else {
+                b.setBackground(Color.WHITE);
+              }
+              break;
+            default:
+              b.setBackground(Color.WHITE);
           }
         } else {
           b.setBackground(Color.WHITE);
         }
       }
+    }
+  }
+
+  // Verifica se a célula (x,y) está dentro do alcance do centro (cx,cy) para
+  // o range e a forma fornecidos.
+  private boolean isInRange(int cx, int cy, int x, int y, int range, ReachShape shape) {
+    if (range <= 0)
+      return false;
+    int dx = Math.abs(cx - x);
+    int dy = Math.abs(cy - y);
+    if (shape == ReachShape.SQUARE) {
+      // Chebyshev distance -> quadrado (max)
+      return Math.max(dx, dy) <= range;
+    } else {
+      // DIAMOND: Manhattan distance -> losango
+      return (dx + dy) <= range;
     }
   }
 
@@ -841,11 +958,6 @@ public class Jogo extends JFrame {
 
   private int clamp(int v, int min, int max) {
     return Math.max(min, Math.min(max, v));
-  }
-
-  private void beepMsg(String msg) {
-    Toolkit.getDefaultToolkit().beep();
-    JOptionPane.showMessageDialog(this, msg, "Aviso", JOptionPane.WARNING_MESSAGE);
   }
 
   // === Integração com servidor ===
@@ -1276,17 +1388,19 @@ public class Jogo extends JFrame {
           } catch (NumberFormatException ignore) {
           }
           if (ax >= 0 && ax < BOARD_SIZE && ay >= 0 && ay < BOARD_SIZE) {
-            atacado[ay][ax] = true;
+            // Marca o ataque temporariamente na UI por ATTACK_MARK_MS milissegundos.
+            final int fx = ax;
+            final int fy = ay;
+            atacado[fy][fx] = true;
             atualizarTabuleiro();
-            // Remover a marcação após breve tempo
-            final int fAx = ax;
-            final int fAy = ay;
-            Timer t = new Timer(ATTACK_MARK_MS, ev -> {
-              atacado[fAy][fAx] = false;
+            // Timer para limpar a marcação após o período definido
+            Timer clearTimer = new Timer(ATTACK_MARK_MS, ev -> {
+              atacado[fy][fx] = false;
               atualizarTabuleiro();
+              ((Timer) ev.getSource()).stop();
             });
-            t.setRepeats(false);
-            t.start();
+            clearTimer.setRepeats(false);
+            clearTimer.start();
           }
           break;
         }
@@ -1332,8 +1446,9 @@ public class Jogo extends JFrame {
               } catch (NumberFormatException ignore) {
               }
             }
+
+            // Se for um sonar próprio, garanta um id (local) quando necessário
             if (sonarBy != null && sonarBy.equals(jogadorAtual)) {
-              // pertence a este jogador
               if (assignedId <= 0) {
                 // encontrar o menor id livre entre 1..MAX_SONARES
                 for (int i = 1; i <= MAX_SONARES; i++) {
@@ -1349,6 +1464,7 @@ public class Jogo extends JFrame {
                 if (prev != null) {
                   sonarIdGrid[prev.y][prev.x] = 0;
                 }
+                // salvar id e coordenadas locais
                 sonarIdGrid[sy][sx] = assignedId;
                 mySonarCoords[assignedId] = new java.awt.Point(sx, sy);
                 mySonarDetected[assignedId] = false;
@@ -1357,8 +1473,11 @@ public class Jogo extends JFrame {
                 sonaresPlaced++;
               }
             } else {
-              // Sonar de outro jogador: não atribuímos id local, apenas marcamos
-              // sonarMarked para exibição.
+              // Sonar de outro jogador: se o servidor forneceu um id, registre-o
+              // no grid para manter consistência (ajuda DETECTADO a localizar).
+              if (assignedId > 0 && assignedId <= MAX_SONARES) {
+                sonarIdGrid[sy][sx] = assignedId;
+              }
             }
             // Atualiza contadores: se o sonar for deste jogador, consumimos um pendente
             atualizarTabuleiro();
@@ -1447,19 +1566,46 @@ public class Jogo extends JFrame {
             try {
               int id = Integer.parseInt(numStr);
               if (id >= 1 && id <= MAX_SONARES) {
+                // Primeiro tente usar a posição conhecida localmente
                 java.awt.Point p = mySonarCoords[id];
+                // Se não conhecermos a posição localmente, tente buscar no grid
+                if (p == null) {
+                  outer: for (int yy = 0; yy < BOARD_SIZE; yy++) {
+                    for (int xx = 0; xx < BOARD_SIZE; xx++) {
+                      if (sonarIdGrid[yy][xx] == id) {
+                        p = new java.awt.Point(xx, yy);
+                        // garantir consistência local
+                        mySonarCoords[id] = p;
+                        break outer;
+                      }
+                    }
+                  }
+                }
+
                 if (p != null) {
                   mySonarDetected[id] = true;
                   // garante que a célula esteja marcada como sonar
                   sonarMarked[p.y][p.x] = true;
+                  // garantir que o id esteja refletido no grid
+                  sonarIdGrid[p.y][p.x] = id;
                   atualizarTabuleiro();
                   if (gameMessagesArea != null) {
                     gameMessagesArea.append("Sonar detectou atividade no seu dispositivo (id:" + id + ").\n");
                     gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
                   }
+                } else {
+                  // Não encontramos posição conhecida para esse id — log para depuração
+                  System.out.println("DETECTADO recebido para id=" + id + " mas posição desconhecida");
+                  if (gameMessagesArea != null) {
+                    gameMessagesArea.append("Detectado (id:" + id + "): posição desconhecida no cliente.\n");
+                    gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
+                  }
                 }
+              } else {
+                System.out.println("DETECTADO com id fora do intervalo: " + numStr);
               }
             } catch (NumberFormatException ignore) {
+              System.out.println("DETECTADO: id inválido -> " + numStr);
             }
           }
           break;
@@ -1484,15 +1630,18 @@ public class Jogo extends JFrame {
                 int ix = Integer.parseInt(sx == null ? "-1" : sx);
                 int iy = Integer.parseInt(sy == null ? "-1" : sy);
                 if (ix >= 0 && ix < BOARD_SIZE && iy >= 0 && iy < BOARD_SIZE) {
-                  atacado[iy][ix] = true;
+                  // Marcar o local atingido temporariamente e limpar após ATTACK_MARK_MS
+                  final int fx = ix;
+                  final int fy = iy;
+                  atacado[fy][fx] = true;
                   atualizarTabuleiro();
-                  final int fIx = ix, fIy = iy;
-                  Timer tt = new Timer(ATTACK_MARK_MS, ev -> {
-                    atacado[fIy][fIx] = false;
+                  Timer clearTimer = new Timer(ATTACK_MARK_MS, ev -> {
+                    atacado[fy][fx] = false;
                     atualizarTabuleiro();
+                    ((Timer) ev.getSource()).stop();
                   });
-                  tt.setRepeats(false);
-                  tt.start();
+                  clearTimer.setRepeats(false);
+                  clearTimer.start();
                 }
               } catch (NumberFormatException ignore) {
               }
