@@ -330,8 +330,20 @@ public class Server {
 
                 String nomeCliente = splitedSentence[1];
                 String tokenCliente = splitedSentence[2];
-                int posicaoX = Integer.parseInt(splitedSentence[3]);
-                int posicaoY = Integer.parseInt(splitedSentence[4]);
+                int posicaoX;
+                int posicaoY;
+                try {
+                  posicaoX = Integer.parseInt(splitedSentence[3]);
+                } catch (NumberFormatException nfe) {
+                  enviarLinha(outToClient, tipo, "400", "posicaoX invalido", "campo:posicaoX");
+                  break;
+                }
+                try {
+                  posicaoY = Integer.parseInt(splitedSentence[4]);
+                } catch (NumberFormatException nfe) {
+                  enviarLinha(outToClient, tipo, "400", "posicaoY invalido", "campo:posicaoY");
+                  break;
+                }
 
                 // Opção adicional, se for true, então as posições passadas não serão tratadas
                 // como posições absolutas, mas como deslocamentos relativos
@@ -360,8 +372,20 @@ public class Server {
 
                 String nomeCliente = splitedSentence[1];
                 String tokenCliente = splitedSentence[2];
-                int posicaoX = Integer.parseInt(splitedSentence[3]);
-                int posicaoY = Integer.parseInt(splitedSentence[4]);
+                int posicaoX;
+                int posicaoY;
+                try {
+                  posicaoX = Integer.parseInt(splitedSentence[3]);
+                } catch (NumberFormatException nfe) {
+                  enviarLinha(outToClient, tipo, "400", "posicaoX invalido", "campo:posicaoX");
+                  break;
+                }
+                try {
+                  posicaoY = Integer.parseInt(splitedSentence[4]);
+                } catch (NumberFormatException nfe) {
+                  enviarLinha(outToClient, tipo, "400", "posicaoY invalido", "campo:posicaoY");
+                  break;
+                }
 
                 // Opção adicional, se for true, então as posições passadas não serão tratadas
                 // como posições absolutas, mas como deslocamentos relativos
@@ -390,8 +414,20 @@ public class Server {
 
                 String nomeCliente = splitedSentence[1];
                 String tokenCliente = splitedSentence[2];
-                int posicaoX = Integer.parseInt(splitedSentence[3]);
-                int posicaoY = Integer.parseInt(splitedSentence[4]);
+                int posicaoX;
+                int posicaoY;
+                try {
+                  posicaoX = Integer.parseInt(splitedSentence[3]);
+                } catch (NumberFormatException nfe) {
+                  enviarLinha(outToClient, tipo, "400", "posicaoX invalido", "campo:posicaoX");
+                  break;
+                }
+                try {
+                  posicaoY = Integer.parseInt(splitedSentence[4]);
+                } catch (NumberFormatException nfe) {
+                  enviarLinha(outToClient, tipo, "400", "posicaoY invalido", "campo:posicaoY");
+                  break;
+                }
 
                 // Opção adicional, se for true, então as posições passadas não serão tratadas
                 // como posições absolutas, mas como deslocamentos relativos

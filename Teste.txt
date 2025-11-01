@@ -1,5 +1,5 @@
-a b c d e f g h i j
-200
+a b c d e f g h i j k l m n o p q r s t u v w x y z
+100
 listarjogadores
 listarpartidas
 listarjogadores
@@ -221,3 +221,74 @@ desafiar s
 desafiar t
 desafiar s
 desafiar r
+pronto
+pronto
+pronto
+pronto
+pronto
+pronto
+listarjogadores
+listarpartidas
+pronto
+pronto
+pronto
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 1 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+mover 0 1 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1
+atacar -2 0 1

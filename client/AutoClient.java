@@ -26,7 +26,13 @@ public class AutoClient {
     }
 
     final String name = args[0];
-    final int tempo = Integer.parseInt(args[1]);
+    int tempo;
+    try {
+      tempo = Integer.parseInt(args[1]);
+    } catch (NumberFormatException nfe) {
+      System.err.println("Aviso: tempo invalido '" + args[1] + "', usando 200ms por padrao.");
+      tempo = 200;
+    }
     final Path commandsFile = Paths.get(args[2]);
 
     if (!Files.exists(commandsFile)) {
