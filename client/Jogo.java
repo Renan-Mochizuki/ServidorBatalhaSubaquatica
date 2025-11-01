@@ -900,8 +900,17 @@ public class Jogo extends JFrame {
         if (x == playerX && y == playerY) {
           b.setBackground(new Color(90, 160, 255)); // jogador
           if (jogadorAtual != null && !jogadorAtual.isEmpty()) {
-            String first = jogadorAtual.substring(0, 1).toUpperCase();
-            b.setText(first);
+            String nome = jogadorAtual.trim();
+            if (!nome.isEmpty()) {
+              String first = nome.substring(0, 1).toUpperCase();
+              // If the first letter would be 'S' or 'X' (case-insensitive),
+              // use 'J' instead to avoid duplicate/confusing symbols on the board.
+              if ("S".equals(first) || "X".equals(first)) {
+                b.setText("J");
+              } else {
+                b.setText(first);
+              }
+            }
           }
           continue;
         }
@@ -937,8 +946,9 @@ public class Jogo extends JFrame {
             }
             b.setBackground(isMy ? new Color(200, 230, 150) : new Color(230, 230, 150));
             // Mostrar símbolo S quando não detectado; servidor DETECTADO irá
-            // alternar para '*' até o próximo TURNO, que limpa sonarDetected.
-            // b.setText("S");
+            // alternar para '*' até que o jogador local realize uma ação
+            // que limpe as detecções. Reexibir 'S' por padrão quando não há '*'.
+            b.setText("S");
           }
           continue;
         }
@@ -1509,16 +1519,16 @@ public class Jogo extends JFrame {
           // Simplified sonar handling: trust the server.
           // If the placement was invalid, re-enable the player and fix counters.
           if ("400".equals(codigoServer)) {
-            String by = separarValores(valoresServer, "nome");
-            if (by != null && by.equals(jogadorAtual)) {
-              if (pendingSonares > 0)
-                pendingSonares--;
-              playerTurn = true;
-              atualizarStatusTurno();
-              if (gameMessagesArea != null) {
-                gameMessagesArea.append("Posição de sonar inválida.\n");
-                gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
-              }
+            // Position invalid for sonar. The server may omit the "nome"
+            // field in the error; restore local state so the player can
+            // retry (similar to MOVER/ATACAR handling).
+            if (pendingSonares > 0)
+              pendingSonares--;
+            playerTurn = true;
+            atualizarStatusTurno();
+            if (gameMessagesArea != null) {
+              gameMessagesArea.append("Posição de sonar inválida.\n");
+              gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
             }
             break;
           }
@@ -1537,11 +1547,9 @@ public class Jogo extends JFrame {
           }
 
           if (sx >= 0 && sx < BOARD_SIZE && sy >= 0 && sy < BOARD_SIZE) {
-            // Marca o sonar e garante que a célula não esteja marcada como
-            // detectada localmente — o servidor re-enviará DETECTADO quando
-            // apropriado.
+            // Marca o sonar; não alteramos sonarDetected aqui. Confiamos no
+            // servidor para enviar DETECTADO quando um sonar detectar alguém.
             sonarMarked[sy][sx] = true;
-            sonarDetected[sy][sx] = false;
 
             // Se for meu sonar, ajustar contadores mínimos para manter UX
             if (sonarBy != null && sonarBy.equals(jogadorAtual)) {
@@ -1776,15 +1784,13 @@ public class Jogo extends JFrame {
           break;
         }
         case "TURNO": {
-          // Ao iniciar novo turno, limpamos as marcações de detecção anteriores.
-          for (int yy = 0; yy < BOARD_SIZE; yy++) {
-            for (int xx = 0; xx < BOARD_SIZE; xx++) {
-              sonarDetected[yy][xx] = false;
-            }
-          }
-          for (int i = 1; i <= MAX_SONARES; i++) {
-            mySonarDetected[i] = false;
-          }
+          // NOTE: Do not clear `sonarDetected` or `mySonarDetected` here.
+          // The client now follows a server-trust model: DETECTADO messages
+          // from the server explicitly set detection marks and those marks
+          // are retained until the local player performs an action that
+          // clears them (e.g. MOVER/ATACAR/SONAR). Clearing here caused
+          // detections to disappear prematurely when a TURNO message was
+          // sent shortly after DETECTADO.
 
           if ("200".equals(codigoServer)) {
             String nomeJogadorTurno = separarValores(valoresServer, "turno");
