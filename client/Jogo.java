@@ -49,6 +49,8 @@ public class Jogo extends JFrame {
   private static final int BOARD_SIZE = 16;
   private JButton[][] boardButtons = new JButton[BOARD_SIZE][BOARD_SIZE];
   private boolean[][] atacado = new boolean[BOARD_SIZE][BOARD_SIZE];
+  // Painel do tabuleiro (guardado para atualizações em lote)
+  private JPanel boardPanelRef;
 
   private int startX = 0, startY = 0; // coordenadas iniciais configuráveis
   private int playerX = 0, playerY = 0; // coordenadas atuais do jogador
@@ -61,6 +63,16 @@ public class Jogo extends JFrame {
   private int sonaresPlaced = 0; // quantos sonares este cliente já colocou (confirmados)
   private int pendingSonares = 0; // requisições de sonar enviadas aguardando confirmação
   private static final int MAX_SONARES = 4;
+  // Grid que guarda o id do sonar (0 = nenhum). IDs válidos: 1..MAX_SONARES
+  private int[][] sonarIdGrid = new int[BOARD_SIZE][BOARD_SIZE];
+  // Coordenadas dos sonares deste jogador por id (1..MAX_SONARES)
+  private java.awt.Point[] mySonarCoords = new java.awt.Point[MAX_SONARES + 1];
+  // Flags indicando se um sonar (por id) detectou alguém (para colorir)
+  private boolean[] mySonarDetected = new boolean[MAX_SONARES + 1];
+
+  // Duração (ms) da marcação visual de ataque (X). Reduza para tornar a animação
+  // mais rápida. Valor padrão antes: 3000.
+  private static final int ATTACK_MARK_MS = 600;
 
   private Boolean playerTurn = true; // controle de turno (null = aguardando/reservado)
   private JLabel turnoLabel; // label de status do turno
@@ -109,8 +121,12 @@ public class Jogo extends JFrame {
     titulo.setFont(titulo.getFont().deriveFont(Font.BOLD, 20f));
 
     JLabel rotulo = new JLabel("Digite seu nome de jogador:");
-    rotulo.setAlignmentX(Component.LEFT_ALIGNMENT);
     rotulo.setBorder(new EmptyBorder(12, 0, 4, 0));
+    // Envolver o rótulo em um container para forçar alinhamento à esquerda
+    JPanel rotuloContainer = new JPanel(new BorderLayout());
+    rotuloContainer.setAlignmentX(Component.LEFT_ALIGNMENT);
+    rotuloContainer.add(rotulo, BorderLayout.WEST);
+    rotuloContainer.setMaximumSize(new Dimension(Integer.MAX_VALUE, rotulo.getPreferredSize().height));
 
     JTextField campoNome = new JTextField();
     campoNome.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
@@ -160,7 +176,7 @@ public class Jogo extends JFrame {
     });
 
     box.add(titulo);
-    box.add(rotulo);
+    box.add(rotuloContainer);
     box.add(campoNome);
     box.add(Box.createVerticalStrut(8));
     box.add(serverRow);
@@ -209,23 +225,9 @@ public class Jogo extends JFrame {
     // reduzir o espaçamento à esquerda do painel central para diminuir margem
     centro.setBorder(new EmptyBorder(24, 6, 24, 24));
 
-    JLabel placeholder = new JLabel("Área do jogo (Home)");
-    placeholder.setAlignmentX(Component.CENTER_ALIGNMENT);
-    placeholder.setFont(placeholder.getFont().deriveFont(Font.PLAIN, 18f));
-    placeholder.setForeground(new Color(70, 70, 70));
     // Adiciona a caixa de desafios recebidos acima do conteúdo central
     centro.add(leftTopBox);
-
-    JButton irParaJogo = new JButton("Ir para o jogo");
-    irParaJogo.setAlignmentX(Component.CENTER_ALIGNMENT);
-    irParaJogo.addActionListener(e -> {
-      iniciarPartida();
-      cardLayout.show(root, "game");
-    });
-
-    centro.add(placeholder);
     centro.add(Box.createVerticalStrut(12));
-    centro.add(irParaJogo);
 
     // Seção da direita: lista de jogadores com botões
     JPanel direita = new JPanel(new BorderLayout());
@@ -458,6 +460,8 @@ public class Jogo extends JFrame {
 
     // Tabuleiro (16x16)
     JPanel boardPanel = new JPanel(new GridLayout(BOARD_SIZE, BOARD_SIZE, 1, 1));
+    // guarda referência para otimizar atualizações em lote
+    boardPanelRef = boardPanel;
     boardPanel.setBorder(new EmptyBorder(8, 8, 8, 8));
     for (int y = 0; y < BOARD_SIZE; y++) {
       for (int x = 0; x < BOARD_SIZE; x++) {
@@ -479,9 +483,33 @@ public class Jogo extends JFrame {
     turnoLabel = new JLabel("Turno: Jogador");
     status.add(turnoLabel, BorderLayout.WEST);
 
-    JButton voltarHome = new JButton("Voltar para Home");
-    voltarHome.addActionListener(e -> cardLayout.show(root, "home"));
-    status.add(voltarHome, BorderLayout.EAST);
+    // Botão para passar o turno (envia apenas a linha PASSAR <jogadorAtual>
+    // <token>)
+    JButton passarTurno = new JButton("Passar turno");
+    passarTurno.addActionListener(e -> {
+      if (connection != null && connection.isConnected()) {
+        connection.sendLine("PASSAR " + jogadorAtual + " " + token);
+      } else {
+        JOptionPane.showMessageDialog(this, "Sem conexão com o servidor.", "Passar turno", JOptionPane.WARNING_MESSAGE);
+      }
+    });
+
+    // Botão para sair da partida: envia SAIRPARTIDA e volta para a tela Home
+    JButton sairPartida = new JButton("Sair da partida");
+    sairPartida.addActionListener(e -> {
+      if (connection != null && connection.isConnected()) {
+        connection.sendLine("SAIRPARTIDA " + jogadorAtual + " " + token);
+      }
+      // Volta para a Home independentemente da conexão (UI)
+      cardLayout.show(root, "home");
+    });
+
+    // Container à direita com botões de ação
+    JPanel rightActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+    rightActions.add(passarTurno);
+    rightActions.add(sairPartida);
+
+    status.add(rightActions, BorderLayout.EAST);
 
     tela.add(status, BorderLayout.SOUTH);
     return tela;
@@ -500,11 +528,22 @@ public class Jogo extends JFrame {
     playerTurn = true;
     sonaresPlaced = 0;
     pendingSonares = 0;
+    // limpa ids e detections
+    for (int y = 0; y < BOARD_SIZE; y++) {
+      for (int x = 0; x < BOARD_SIZE; x++) {
+        sonarIdGrid[y][x] = 0;
+      }
+    }
+    for (int i = 1; i <= MAX_SONARES; i++) {
+      mySonarCoords[i] = null;
+      mySonarDetected[i] = false;
+    }
     atualizarStatusTurno();
     atualizarTabuleiro();
   }
 
   private void onCellClick(int x, int y) {
+    // debug println removed to reduce console overhead
     // Se não houver conexão com o servidor, bloquear qualquer ação local.
     if (connection == null || !connection.isConnected()) {
       JOptionPane.showMessageDialog(this, "Sem conexão com o servidor. Conecte-se para jogar.", "Sem conexão",
@@ -575,15 +614,15 @@ public class Jogo extends JFrame {
   }
 
   private void fimDoTurnoDoJogador() {
-    // When connected, notify server that we finished our turn and wait for the
-    // server to assign the next turn (server will send a TURNO message).
+    // Do NOT automatically send PASSAR here. Previously this method sent
+    // PASSAR to the server after every action, which caused every move/attack/
+    // sonar to also send a PASSAR. PASSAR should be sent explicitly by the
+    // user (via the "Passar turno" button) or by higher-level game logic.
     if (connection != null && connection.isConnected()) {
+      // After performing an action we block local input and wait for the
+      // server to inform the next turn (server will send a TURNO message).
+      playerTurn = null; // waiting for server
       atualizarStatusTurno();
-      // Inform server we passed/ended our turn. Server expects PASSAR <nome> <token>
-      try {
-        connection.sendLine("PASSAR " + jogadorAtual + " " + token);
-      } catch (Exception ignore) {
-      }
     } else {
       // No server: block actions and inform the user — cannot proceed offline.
       playerTurn = false;
@@ -605,11 +644,20 @@ public class Jogo extends JFrame {
     }
     // Opcional: desabilitar o tabuleiro quando não é o turno do jogador
     boolean enabled = Boolean.TRUE.equals(playerTurn);
+    // Apenas altere o estado de enabled se for diferente — evita repaints
     for (int y = 0; y < BOARD_SIZE; y++) {
       for (int x = 0; x < BOARD_SIZE; x++) {
-        if (boardButtons[y][x] != null)
-          boardButtons[y][x].setEnabled(enabled);
+        JButton btn = boardButtons[y][x];
+        if (btn == null)
+          continue;
+        if (btn.isEnabled() != enabled) {
+          btn.setEnabled(enabled);
+        }
       }
+    }
+    // repintar o painel uma vez (barato) em vez de revalidar toda a hierarquia
+    if (boardPanelRef != null) {
+      boardPanelRef.repaint();
     }
   }
 
@@ -622,12 +670,29 @@ public class Jogo extends JFrame {
         b.setText("");
         if (x == playerX && y == playerY) {
           b.setBackground(new Color(90, 160, 255)); // jogador
+          // Mostrar a primeira letra do nome do jogador no quadrado
+          if (jogadorAtual != null && !jogadorAtual.isEmpty()) {
+            String first = jogadorAtual.substring(0, 1).toUpperCase();
+            b.setText(first);
+          }
         } else if (atacado[y][x]) {
           b.setBackground(new Color(240, 120, 120)); // atacado
           b.setText("X");
         } else if (sonarMarked[y][x]) {
-          b.setBackground(new Color(230, 230, 150)); // sonar
-          b.setText("S");
+          int sid = sonarIdGrid[y][x];
+          if (sid > 0) {
+            // Sonar próprio identificado por id
+            if (sid >= 1 && sid <= MAX_SONARES && mySonarDetected[sid]) {
+              b.setBackground(new Color(255, 180, 80)); // detectou alguém (destaque)
+            } else {
+              b.setBackground(new Color(200, 230, 150)); // sonar próprio
+            }
+            b.setText(String.valueOf(sid));
+          } else {
+            // Sonar de outro jogador: marcador simples
+            b.setBackground(new Color(230, 230, 150)); // sonar
+            b.setText("S");
+          }
         } else {
           b.setBackground(Color.WHITE);
         }
@@ -818,13 +883,12 @@ public class Jogo extends JFrame {
               connection.sendLine("LISTARJOGADORES");
             }
           } else {
-            // Falha: exibir textoServer (mensagem do backend) ou padrão
+            // Falha: mostrar a mensagem do servidor na label de status (sem popup)
             String motivo = (textoServer != null && !textoServer.isEmpty()) ? textoServer : "Cadastro não realizado";
             if (loginStatusLabel != null) {
               loginStatusLabel.setForeground(new Color(120, 0, 0));
               loginStatusLabel.setText(motivo);
             }
-            JOptionPane.showMessageDialog(this, motivo, "Cadastro não realizado", JOptionPane.WARNING_MESSAGE);
             if (loginButton != null)
               loginButton.setEnabled(true);
           }
@@ -1004,9 +1068,10 @@ public class Jogo extends JFrame {
           break;
         }
         case "MOVER": {
-          // Servidor informa movimento (x,y) — aplicamos localmente quando a
-          // mensagem indica que o movimento é do próprio jogador.
-          String moverNome = separarValores(valoresServer, "nome");
+          // Servidor informa movimento (x,y).
+          // Se o servidor respondeu 408 => posição inválida: não aplicar nada
+          // e reabilitar o jogador para tentar novamente. Para qualquer outro
+          // código consideramos confirmação e aplicamos a posição.
           String xStr = separarValores(valoresServer, "x");
           String yStr = separarValores(valoresServer, "y");
           int mx = 0, my = 0;
@@ -1018,7 +1083,11 @@ public class Jogo extends JFrame {
             my = Integer.parseInt(yStr == null ? "0" : yStr);
           } catch (NumberFormatException ignore) {
           }
-          if (moverNome != null && moverNome.equals(jogadorAtual)) {
+          if ("408".equals(codigoServer)) {
+            playerTurn = true;
+            atualizarStatusTurno();
+            JOptionPane.showMessageDialog(this, "Movimento inválido.", "Ação inválida", JOptionPane.WARNING_MESSAGE);
+          } else {
             playerX = clamp(mx, 0, BOARD_SIZE - 1);
             playerY = clamp(my, 0, BOARD_SIZE - 1);
             atualizarTabuleiro();
@@ -1026,7 +1095,17 @@ public class Jogo extends JFrame {
           break;
         }
         case "ATACAR": {
-          // Servidor indica um ataque em (x,y). Marcamos temporariamente com X
+          // Servidor indica um ataque em (x,y). Tratamos código 408 como ataque
+          // inválido (não faz nada); outros códigos causam a marcação temporária.
+          if ("408".equals(codigoServer)) {
+            String attacker = separarValores(valoresServer, "nome");
+            if (attacker != null && attacker.equals(jogadorAtual)) {
+              playerTurn = true;
+              atualizarStatusTurno();
+              JOptionPane.showMessageDialog(this, "Ataque inválido.", "Ação inválida", JOptionPane.WARNING_MESSAGE);
+            }
+            break;
+          }
           String xStr = separarValores(valoresServer, "x");
           String yStr = separarValores(valoresServer, "y");
           int ax = 0, ay = 0;
@@ -1041,10 +1120,10 @@ public class Jogo extends JFrame {
           if (ax >= 0 && ax < BOARD_SIZE && ay >= 0 && ay < BOARD_SIZE) {
             atacado[ay][ax] = true;
             atualizarTabuleiro();
-            // Remover a marcação após 3 segundos
+            // Remover a marcação após breve tempo
             final int fAx = ax;
             final int fAy = ay;
-            Timer t = new Timer(3000, ev -> {
+            Timer t = new Timer(ATTACK_MARK_MS, ev -> {
               atacado[fAy][fAx] = false;
               atualizarTabuleiro();
             });
@@ -1055,7 +1134,22 @@ public class Jogo extends JFrame {
         }
         case "SONAR": {
           // Servidor indica um sonar em (x,y). Sonar fica permanente.
+          // Código 408 significa posição inválida => não fazer nada e reabilitar
+          // jogador e ajustar pendentes.
+          if ("408".equals(codigoServer)) {
+            String by = separarValores(valoresServer, "nome");
+            if (by != null && by.equals(jogadorAtual)) {
+              if (pendingSonares > 0)
+                pendingSonares--;
+              playerTurn = true;
+              atualizarStatusTurno();
+              JOptionPane.showMessageDialog(this, "Posição de sonar inválida.", "Ação inválida",
+                  JOptionPane.WARNING_MESSAGE);
+            }
+            break;
+          }
           String sonarBy = separarValores(valoresServer, "nome");
+          String numStr = separarValores(valoresServer, "num");
           String sxStr = separarValores(valoresServer, "x");
           String syStr = separarValores(valoresServer, "y");
           int sx = 0, sy = 0;
@@ -1069,12 +1163,44 @@ public class Jogo extends JFrame {
           }
           if (sx >= 0 && sx < BOARD_SIZE && sy >= 0 && sy < BOARD_SIZE) {
             sonarMarked[sy][sx] = true;
-            // Atualiza contadores: se o sonar for deste jogador, consumimos um pendente
-            if (sonarBy != null && sonarBy.equals(jogadorAtual)) {
-              if (pendingSonares > 0)
-                pendingSonares--;
-              sonaresPlaced++;
+            // Se o servidor forneceu um id (num), use-o; caso contrário, para
+            // sonares próprios, atribuímos o próximo id livre localmente.
+            int assignedId = 0;
+            if (numStr != null) {
+              try {
+                assignedId = Integer.parseInt(numStr);
+              } catch (NumberFormatException ignore) {
+              }
             }
+            if (sonarBy != null && sonarBy.equals(jogadorAtual)) {
+              // pertence a este jogador
+              if (assignedId <= 0) {
+                // encontrar o menor id livre entre 1..MAX_SONARES
+                for (int i = 1; i <= MAX_SONARES; i++) {
+                  if (mySonarCoords[i] == null) {
+                    assignedId = i;
+                    break;
+                  }
+                }
+              }
+              if (assignedId > 0 && assignedId <= MAX_SONARES) {
+                // se o id já existia em outra posição, limpe a posição anterior
+                java.awt.Point prev = mySonarCoords[assignedId];
+                if (prev != null) {
+                  sonarIdGrid[prev.y][prev.x] = 0;
+                }
+                sonarIdGrid[sy][sx] = assignedId;
+                mySonarCoords[assignedId] = new java.awt.Point(sx, sy);
+                mySonarDetected[assignedId] = false;
+                if (pendingSonares > 0)
+                  pendingSonares--;
+                sonaresPlaced++;
+              }
+            } else {
+              // Sonar de outro jogador: não atribuímos id local, apenas marcamos
+              // sonarMarked para exibição.
+            }
+            // Atualiza contadores: se o sonar for deste jogador, consumimos um pendente
             atualizarTabuleiro();
           }
           break;
@@ -1089,6 +1215,24 @@ public class Jogo extends JFrame {
           break;
         }
         case "DETECTADO": {
+          // Servidor informa que um sonar detectou alguém. Espera-se um campo
+          // num:<id> indicando qual sonar (id) detectou.
+          String numStr = separarValores(valoresServer, "num");
+          if (numStr != null) {
+            try {
+              int id = Integer.parseInt(numStr);
+              if (id >= 1 && id <= MAX_SONARES) {
+                java.awt.Point p = mySonarCoords[id];
+                if (p != null) {
+                  mySonarDetected[id] = true;
+                  // garante que a célula esteja marcada como sonar
+                  sonarMarked[p.y][p.x] = true;
+                  atualizarTabuleiro();
+                }
+              }
+            } catch (NumberFormatException ignore) {
+            }
+          }
           break;
         }
         case "ACERTO": {
@@ -1113,6 +1257,12 @@ public class Jogo extends JFrame {
           break;
         }
         case "ERRO": {
+          // Exibir mensagem simples de erro enviada pelo servidor
+          String msg = (textoServer != null && !textoServer.isEmpty()) ? textoServer
+              : separarValores(valoresServer, "mensagem");
+          if (msg == null || msg.isEmpty())
+            msg = "Erro do servidor";
+          JOptionPane.showMessageDialog(this, msg, "Erro do servidor", JOptionPane.ERROR_MESSAGE);
           break;
         }
         case "DESCONECTADO": {
