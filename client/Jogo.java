@@ -72,6 +72,10 @@ public class Jogo extends JFrame {
 
   // Área de mensagens específica da partida (mostrada na tela de jogo)
   private JTextArea gameMessagesArea;
+  // Chat específico da partida (nova caixa junto ao tabuleiro)
+  private JTextArea partidaChatArea;
+  private JTextField partidaChatInputField;
+  private JButton partidaChatSendButton;
 
   private int startX = 0, startY = 0; // coordenadas iniciais configuráveis
   private int playerX = 0, playerY = 0; // coordenadas atuais do jogador
@@ -146,6 +150,11 @@ public class Jogo extends JFrame {
 
   // Duração (ms) da marcação visual de ataque (X). Fica visível por 3 segundos.
   private static final int ATTACK_MARK_MS = 3000;
+
+  // Desired display size for the board area (client asked for responsive
+  // layout where the board occupies a fixed rectangle and cells adapt).
+  private int boardDisplayWidth = 650;
+  private int boardDisplayHeight = 400;
 
   private Boolean playerTurn = true; // controle de turno (null = aguardando/reservado)
   private JLabel turnoLabel; // label de status do turno
@@ -597,6 +606,13 @@ public class Jogo extends JFrame {
   // que um estado anterior (ex.: "Enviado") permaneça ao retornar à Home.
   private void showGame() {
     resetChallengeButtons();
+    // Limpa mensagens de partidas anteriores para evitar mostrar histórico antigo
+    if (gameMessagesArea != null) {
+      gameMessagesArea.setText("");
+    }
+    if (partidaChatArea != null) {
+      partidaChatArea.setText("");
+    }
     cardLayout.show(root, "game");
   }
 
@@ -754,12 +770,20 @@ public class Jogo extends JFrame {
     // guarda referência para otimizar atualizações em lote
     boardPanelRef = boardPanel;
     boardPanel.setBorder(new EmptyBorder(8, 8, 8, 8));
+
+    // Set the preferred size of the whole board to a fixed rectangle so the
+    // GridLayout will divide that rectangle into BOARD_SIZE x BOARD_SIZE cells
+    // responsively (cells will not be forced to a fixed pixel size).
+    boardPanel.setPreferredSize(new Dimension(boardDisplayWidth, boardDisplayHeight));
+
     for (int y = 0; y < BOARD_SIZE; y++) {
       for (int x = 0; x < BOARD_SIZE; x++) {
         final int cx = x, cy = y;
         JButton b = new JButton();
         b.setMargin(new Insets(0, 0, 0, 0));
-        b.setPreferredSize(new Dimension(32, 32));
+        // Use the configurable cellSize so the grid can be resized centrally.
+        // Do NOT set preferred/minimum sizes on the cell buttons. Let GridLayout
+        // size them to fill the boardPanel's preferred rectangle responsively.
         b.setFocusPainted(false);
         // Garantir que o background seja pintado corretamente ao mudar cores
         b.setOpaque(true);
@@ -769,7 +793,58 @@ public class Jogo extends JFrame {
         boardPanel.add(b);
       }
     }
-    tela.add(boardPanel, BorderLayout.CENTER);
+
+    // Wrap boardPanel in a FlowLayout wrapper so it won't be stretched by
+    // BorderLayout.CENTER and will instead respect its preferred size. This
+    // makes changes to `cellSize` actually affect the visual cell width.
+    JPanel boardWrapper = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+    boardWrapper.add(boardPanel);
+
+    // --- Nova caixa de chat da partida (à direita do tabuleiro) ---
+    JPanel partidaChatBox = new JPanel();
+    partidaChatBox.setLayout(new BoxLayout(partidaChatBox, BoxLayout.Y_AXIS));
+    partidaChatBox.setBorder(BorderFactory.createCompoundBorder(
+        BorderFactory.createLineBorder(new Color(220, 220, 220)), new EmptyBorder(8, 8, 8, 8)));
+    Dimension chatPref = new Dimension(200, 420);
+    partidaChatBox.setPreferredSize(chatPref);
+
+    JLabel pcTitle = new JLabel("Chat da partida");
+    pcTitle.setFont(pcTitle.getFont().deriveFont(Font.BOLD, 12f));
+    pcTitle.setAlignmentX(Component.LEFT_ALIGNMENT);
+    partidaChatBox.add(pcTitle);
+    partidaChatBox.add(Box.createVerticalStrut(6));
+
+    partidaChatArea = new JTextArea(12, 20);
+    partidaChatArea.setEditable(false);
+    partidaChatArea.setLineWrap(true);
+    partidaChatArea.setWrapStyleWord(true);
+    JScrollPane partidaScroll = new JScrollPane(partidaChatArea,
+        ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+        ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+    partidaScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
+    partidaChatBox.add(partidaScroll);
+    partidaChatBox.add(Box.createVerticalStrut(6));
+
+    // Input row (made shorter height)
+    JPanel pcInputRow = new JPanel(new BorderLayout(8, 0));
+    partidaChatInputField = new JTextField();
+    partidaChatSendButton = new JButton("Enviar");
+    // make input and button shorter vertically
+    partidaChatInputField.setPreferredSize(new Dimension(160, 22));
+    partidaChatSendButton.setPreferredSize(new Dimension(70, 22));
+    partidaChatSendButton.setMinimumSize(new Dimension(70, 22));
+    partidaChatSendButton.addActionListener(e -> enviarMensagemChatPartida());
+    partidaChatInputField.addActionListener(e -> enviarMensagemChatPartida());
+    pcInputRow.add(partidaChatInputField, BorderLayout.CENTER);
+    pcInputRow.add(partidaChatSendButton, BorderLayout.EAST);
+    pcInputRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    // limit maximum height so the row stays compact
+    pcInputRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+    partidaChatBox.add(pcInputRow);
+
+    // Add board + chat to the center area
+    tela.add(boardWrapper, BorderLayout.CENTER);
+    tela.add(partidaChatBox, BorderLayout.EAST);
 
     // Barra inferior: ações (sem label de turno — agora mostrado no topo)
     JPanel status = new JPanel(new BorderLayout());
@@ -797,7 +872,8 @@ public class Jogo extends JFrame {
     });
 
     // Container à direita com botões de ação
-    JPanel rightActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+    // aumenta a margem horizontal entre os botões para melhor espaçamento
+    JPanel rightActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
     rightActions.add(passarTurno);
     rightActions.add(sairPartidaBtn);
 
@@ -1148,7 +1224,6 @@ public class Jogo extends JFrame {
 
     // separar itens dentro de { ... }
     String[] items = separarLista(listaCampo);
-    System.out.println(listaCampo);
     if (items == null || items.length == 0) {
       JLabel empty = new JLabel("(nenhuma partida pública)");
       empty.setForeground(new Color(90, 90, 90));
@@ -1225,8 +1300,15 @@ public class Jogo extends JFrame {
         // Se já estivermos marcados como tendo entrado nesta partida, ajustar o rótulo
         if (entrouPartidaId != null && entrouPartidaId.equals(idKey)) {
           enterBtn.setText("entrou");
+          resetChallengeButtons();
+          // limpar mensagens de partidas anteriores para evitar confusão
+          if (gameMessagesArea != null) {
+            gameMessagesArea.setText("");
+          }
+          if (partidaChatArea != null) {
+            partidaChatArea.setText("");
+          }
         }
-
         publicGameButtons.put(idKey, enterBtn);
         row.add(enterBtn, BorderLayout.EAST);
         publicGamesList.add(row);
@@ -1325,6 +1407,39 @@ public class Jogo extends JFrame {
       connection.sendLine("CHATGLOBAL " + jogadorAtual + " " + token + " " + texto);
       // Não fazemos append local — o servidor deverá reenviar a mensagem para todos
       chatInputField.setText("");
+    } else {
+      JOptionPane.showMessageDialog(this, "Sem conexão com o servidor.", "Chat",
+          JOptionPane.WARNING_MESSAGE);
+    }
+  }
+
+  // Envia mensagem de chat da partida para o servidor no formato:
+  // CHATPARTIDA <jogadorAtual> <token> <mensagem>
+  private void enviarMensagemChatPartida() {
+    if (partidaChatInputField == null)
+      return;
+    String texto = partidaChatInputField.getText();
+    if (texto == null)
+      texto = "";
+    texto = texto.trim();
+    if (texto.isEmpty())
+      return;
+
+    if (jogadorAtual == null || jogadorAtual.isEmpty()) {
+      JOptionPane.showMessageDialog(this, "Você precisa estar logado para enviar mensagens.", "Chat",
+          JOptionPane.WARNING_MESSAGE);
+      return;
+    }
+    if (token == null || token.isEmpty()) {
+      JOptionPane.showMessageDialog(this, "Token ausente. Refaça o login.", "Chat",
+          JOptionPane.WARNING_MESSAGE);
+      return;
+    }
+
+    if (connection != null && connection.isConnected()) {
+      connection.sendLine("CHATPARTIDA " + jogadorAtual + " " + token + " " + texto);
+      // Esperamos que o servidor reenvie a mensagem; apenas limpar o input localmente
+      partidaChatInputField.setText("");
     } else {
       JOptionPane.showMessageDialog(this, "Sem conexão com o servidor.", "Chat",
           JOptionPane.WARNING_MESSAGE);
@@ -1486,7 +1601,6 @@ public class Jogo extends JFrame {
         case "LISTARPARTIDAS": {
           if ("200".equals(codigoServer)) {
             String partidasCampo = separarValores(valoresServer, "partidas");
-            System.out.println("Partidas públicas recebidas: " + partidasCampo);
             atualizarListaPartidasDoServidor(partidasCampo);
           } else {
             if (mensagensArea != null) {
@@ -1498,12 +1612,6 @@ public class Jogo extends JFrame {
         case "ENTRARPARTIDA": {
           // Server response to a request to enter a public game
           String id = separarValores(valoresServer, "id");
-          if (id == null || id.isEmpty()) {
-            // Fallback: some servers may use 'partida' or 'game'
-            id = separarValores(valoresServer, "partida");
-            if (id == null || id.isEmpty())
-              id = separarValores(valoresServer, "game");
-          }
 
           if ("200".equals(codigoServer)) {
             if (id != null && publicGameButtons.containsKey(id)) {
@@ -1643,10 +1751,14 @@ public class Jogo extends JFrame {
         case "CHATPARTIDA": {
           String fromP = separarValores(valoresServer, "nome");
           String msgP = separarValores(valoresServer, "mensagem");
-          String displayP = (fromP != null && !fromP.isEmpty()) ? ("[Partida] " + fromP + ": " + msgP)
-              : ("[Partida] " + msgP);
+          String displayP = "" + fromP + ": " + msgP;
           if (displayP != null && !displayP.isEmpty()) {
-            appendGameMessage(displayP);
+            // Mostrar somente na nova caixa de chat ao lado do tabuleiro.
+            // Não enviar para a area pequena de mensagens da partida (gameMessagesArea).
+            if (partidaChatArea != null) {
+              partidaChatArea.append(displayP + "\n");
+              partidaChatArea.setCaretPosition(partidaChatArea.getDocument().getLength());
+            }
           }
           break;
         }
