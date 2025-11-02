@@ -207,20 +207,6 @@ public class JogoPartida {
     Missil novoMissil = new Missil(posicaoX, posicaoY, Constants.ALCANCE_ATAQUE, atacante, numTurno);
     this.misseis.add(novoMissil);
 
-    Iterator<Jogador> iterator = this.jogadores.iterator();
-    while (iterator.hasNext()) {
-      Jogador jogadorAlvo = iterator.next();
-      if (jogadorAlvo == atacante) {
-        continue;
-      }
-
-      if (jogadorAlvo.getPosicao().distanciaPermitida(posicaoX, posicaoY, Constants.ALCANCE_ATAQUE,
-          Constants.MODO_ALCANCE_ATAQUE)) {
-        matarJogador(jogadorAlvo);
-        return true;
-      }
-    }
-
     return true;
   }
 

@@ -12,10 +12,10 @@ public class GameManager {
   // Timer de turno por partida
   // Esses dois foram sugeridos pelo Agente Copilot do VSCode ao pedir como se
   // fazia um turno de 15 segundos
-  private final ScheduledExecutorService turnScheduler = Executors.newScheduledThreadPool(4);
+  private final ScheduledExecutorService turnScheduler = Executors.newScheduledThreadPool(2);
   private final ConcurrentMap<Integer, ScheduledFuture<?>> turnTimers = new ConcurrentHashMap<>();
   // Keepalive por cliente
-  private final ScheduledExecutorService keepAliveScheduler = Executors.newScheduledThreadPool(2);
+  private final ScheduledExecutorService keepAliveScheduler = Executors.newScheduledThreadPool(4);
   private final ConcurrentMap<String, ScheduledFuture<?>> keepAliveTimers = new ConcurrentHashMap<>();
 
   // Lista para armazenar os clientes conectados
@@ -110,37 +110,21 @@ public class GameManager {
     }
   }
 
-  // Método que notifica o dono do dispositivo sobre os jogadores detectados por
-  // seus dispositivos de proximidade
-  public void notificarJogadoresDetectados(JogoPartida jogoPartida) {
-    synchronized (jogoPartida) {
-      // Loop de todos os dispositivos
-      Iterator<DispositivoProximidade> itDispositivos = jogoPartida.getDispositivos().iterator();
-      while (itDispositivos.hasNext()) {
-        String todosJogadoresDetectados = "";
-        DispositivoProximidade dispositivo = itDispositivos.next();
-        int xDispositivo = dispositivo.getPosicao().getX();
-        int yDispositivo = dispositivo.getPosicao().getY();
-
-        // Pega a lista de todos jogadores próximos do dispositivo
-        List<Jogador> jogadoresDetectados = jogoPartida.detectarJogadores(dispositivo);
-        Iterator<Jogador> itJogadoresDetectados = jogadoresDetectados.iterator();
-        while (itJogadoresDetectados.hasNext()) {
-          Jogador jogadorDetectado = itJogadoresDetectados.next();
-          if (!todosJogadoresDetectados.isEmpty()) {
-            todosJogadoresDetectados += Constants.SEPARADORITEM;
-          }
-          // Notifica o jogador dono do dispositivo sobre o jogador detectado
-          todosJogadoresDetectados += "nome:" + jogadorDetectado.getNome();
-        }
-        if (!todosJogadoresDetectados.isEmpty()) {
-          String valor = "num:" + dispositivo.getNum() + Constants.SEPARADORATRIBUTO + "x:" + xDispositivo
-              + Constants.SEPARADORATRIBUTO + "y:" + yDispositivo + Constants.SEPARADORATRIBUTO + "jogadores:{"
-              + todosJogadoresDetectados + "}";
-          notificarJogadorPartida(dispositivo.getJogadorDono(), Constants.TIPODETECTADO, "200",
-              "Jogadores detectados pelo dispositivo " + dispositivo.getNum(), valor);
-        }
+  // Método que notifica todos os clientes conectados
+  private void notificarTodos(String tipo, String codigo, String mensagem, String valor) {
+    // Percorre todos os clientes da e envia a mensagem
+    List<Cliente> clientesSnapshot;
+    synchronized (listaCliente) {
+      clientesSnapshot = new ArrayList<>(listaCliente.values());
+    }
+    Iterator<Cliente> it = clientesSnapshot.iterator();
+    while (it.hasNext()) {
+      Cliente clienteAtual = it.next();
+      JogoPartida partidaAndamento = encontrarPartidaAndamento(clienteAtual.getIdPartida());
+      if (partidaAndamento != null && Constants.CHAT_GLOBAL_SOMENTE_LOBBY) {
+        continue;
       }
+      clienteAtual.enviarLinha(tipo, codigo, mensagem, valor);
     }
   }
 
@@ -204,7 +188,7 @@ public class GameManager {
       return;
     }
 
-    notificarJogadoresDetectados(jogoPartida);
+    lidarJogadoresDetectados(jogoPartida);
 
     proximoTurno(jogoPartida);
 
@@ -276,6 +260,40 @@ public class GameManager {
     }
   }
 
+  // Método que notifica o dono do dispositivo sobre os jogadores detectados por
+  // seus dispositivos de proximidade
+  public void lidarJogadoresDetectados(JogoPartida jogoPartida) {
+    synchronized (jogoPartida) {
+      // Loop de todos os dispositivos
+      Iterator<DispositivoProximidade> itDispositivos = jogoPartida.getDispositivos().iterator();
+      while (itDispositivos.hasNext()) {
+        String todosJogadoresDetectados = "";
+        DispositivoProximidade dispositivo = itDispositivos.next();
+        int xDispositivo = dispositivo.getPosicao().getX();
+        int yDispositivo = dispositivo.getPosicao().getY();
+
+        // Pega a lista de todos jogadores próximos do dispositivo
+        List<Jogador> jogadoresDetectados = jogoPartida.detectarJogadores(dispositivo);
+        Iterator<Jogador> itJogadoresDetectados = jogadoresDetectados.iterator();
+        while (itJogadoresDetectados.hasNext()) {
+          Jogador jogadorDetectado = itJogadoresDetectados.next();
+          if (!todosJogadoresDetectados.isEmpty()) {
+            todosJogadoresDetectados += Constants.SEPARADORITEM;
+          }
+          // Notifica o jogador dono do dispositivo sobre o jogador detectado
+          todosJogadoresDetectados += "nome:" + jogadorDetectado.getNome();
+        }
+        if (!todosJogadoresDetectados.isEmpty()) {
+          String valor = "num:" + dispositivo.getNum() + Constants.SEPARADORATRIBUTO + "x:" + xDispositivo
+              + Constants.SEPARADORATRIBUTO + "y:" + yDispositivo + Constants.SEPARADORATRIBUTO + "jogadores:{"
+              + todosJogadoresDetectados + "}";
+          notificarJogadorPartida(dispositivo.getJogadorDono(), Constants.TIPODETECTADO, "200",
+              "Jogadores detectados pelo dispositivo " + dispositivo.getNum(), valor);
+        }
+      }
+    }
+  }
+
   // Método que roda cada turno, se a partida terminou, notifica os jogadores e
   // chama outra função para finalizar a partida e remover da lista
   public boolean verificarFimJogoPartida(JogoPartida jogoPartida) {
@@ -329,25 +347,8 @@ public class GameManager {
     }
   }
 
-  private void notificarTodos(String tipo, String codigo, String mensagem, String valor) {
-    // Percorre todos os clientes da e envia a mensagem
-    List<Cliente> clientesSnapshot;
-    synchronized (listaCliente) {
-      clientesSnapshot = new ArrayList<>(listaCliente.values());
-    }
-    Iterator<Cliente> it = clientesSnapshot.iterator();
-    while (it.hasNext()) {
-      Cliente clienteAtual = it.next();
-      JogoPartida partidaAndamento = encontrarPartidaAndamento(clienteAtual.getIdPartida());
-      if (partidaAndamento != null && Constants.CHAT_GLOBAL_SOMENTE_LOBBY) {
-        continue;
-      }
-      clienteAtual.enviarLinha(tipo, codigo, mensagem, valor);
-    }
-  }
-
+  // Método para gerar a lista de jogadores conectados
   private String gerarListaJogadores() {
-    // Notifica todos os outros clientes sobre o novo cliente conectado
     StringBuilder jogadoresServidor = new StringBuilder();
     List<Cliente> clientesSnapshot;
 
@@ -404,7 +405,6 @@ public class GameManager {
     // Tenta adicionar o cliente na lista, esse método retorna o item anterior
     // daquela chave (nomecliente), ou seja, se não existir item com aquela chave,
     // retorna null
-    // ChatGPT sugeriu o HashMap do listaCliente e esse método putIfAbsent
     if (listaCliente.putIfAbsent(nomeCliente, novoCliente) != null) {
       // Usa o cliente recém-criado (não persistido) apenas para responder nesta
       // conexão
