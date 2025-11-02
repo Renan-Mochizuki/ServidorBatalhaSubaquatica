@@ -54,6 +54,8 @@ public class Jogo extends JFrame {
   private String entrouPartidaId = null;
   // Linha que mostra desafio enviado (aparecerá na mesma caixa de desafios)
   private JPanel outgoingChallengeRow = null;
+  // Indica se o jogador local está morto na partida atual
+  private boolean jogadorMorto = false;
 
   // --- Configurações / estado do tabuleiro ---
   private static final int BOARD_SIZE = 16;
@@ -145,9 +147,14 @@ public class Jogo extends JFrame {
   // Duração (ms) da marcação visual de ataque (X). Fica visível por 3 segundos.
   private static final int ATTACK_MARK_MS = 3000;
 
+  // Size (pixels) of each board cell. Change this to adjust square width.
+  // You can also call setCellSize(...) at runtime before showing the game.
+  private int cellSize = 32;
+
   private Boolean playerTurn = true; // controle de turno (null = aguardando/reservado)
   private JLabel turnoLabel; // label de status do turno
   private ClientConnection connection; // conexão com servidor (opcional)
+  private String nomeJogadorTurnoAtual;
 
   private enum Modo {
     MOVER, ATACAR, SONAR
@@ -584,6 +591,8 @@ public class Jogo extends JFrame {
   // Wrapper para mostrar a tela Home garantindo que os botões de desafio
   // sejam resetados antes de exibir a UI.
   private void showHome() {
+    // Reset local 'morto' flag when returning to Home
+    jogadorMorto = false;
     resetChallengeButtons();
     cardLayout.show(root, "home");
   }
@@ -744,6 +753,7 @@ public class Jogo extends JFrame {
     tela.add(northPanel, BorderLayout.NORTH);
 
     // Tabuleiro (16x16)
+    // Use zero gaps so cells are "juntinhos" (tight together)
     JPanel boardPanel = new JPanel(new GridLayout(BOARD_SIZE, BOARD_SIZE, 1, 1));
     // guarda referência para otimizar atualizações em lote
     boardPanelRef = boardPanel;
@@ -810,6 +820,8 @@ public class Jogo extends JFrame {
         sonarDetected[y][x] = false;
       }
     }
+    // jogador volta a estar vivo no início da partida
+    jogadorMorto = false;
     playerX = clamp(startX, 0, BOARD_SIZE - 1);
     playerY = clamp(startY, 0, BOARD_SIZE - 1);
     playerTurn = true;
@@ -835,6 +847,13 @@ public class Jogo extends JFrame {
     if (connection == null || !connection.isConnected()) {
       JOptionPane.showMessageDialog(this, "Sem conexão com o servidor. Conecte-se para jogar.", "Sem conexão",
           JOptionPane.WARNING_MESSAGE);
+      return;
+    }
+
+    // Se o jogador estiver morto nesta partida, bloquear qualquer ação
+    if (jogadorMorto) {
+      JOptionPane.showMessageDialog(this, "Você está morto nesta partida e não pode agir.", "Inativo",
+          JOptionPane.INFORMATION_MESSAGE);
       return;
     }
 
@@ -911,7 +930,7 @@ public class Jogo extends JFrame {
       if (playerTurn == null) {
         texto = "Turno: aguardando todos jogadores carregarem";
       } else {
-        texto = playerTurn ? "Turno: Jogador" : "Turno: Inimigo...";
+        texto = playerTurn ? "Seu turno: " + nomeJogadorTurnoAtual : "Turno Inimigo: " + nomeJogadorTurnoAtual;
       }
       turnoLabel.setText(texto);
     }
@@ -1143,10 +1162,11 @@ public class Jogo extends JFrame {
       for (String it : items) {
         if (it == null || it.trim().isEmpty())
           continue;
-        // cada item: id:1,andamento:true,numjogadores:2
+        // cada item: id:1,andamento:true,numjogadores:2,maxjogadores:4
         String id = "?";
         String andamento = "?";
         String num = "?";
+        String numMax = "?";
         String[] parts = it.split(",");
         for (String p : parts) {
           String[] kv = p.split(":", 2);
@@ -1158,8 +1178,10 @@ public class Jogo extends JFrame {
             id = v;
           else if ("andamento".equals(k) || "emprogresso".equals(k))
             andamento = v;
-          else if ("numjogadores".equals(k) || "num".equals(k))
+          else if ("numjogadores".equals(k) || "num".equals(k) || "jogadores".equals(k))
             num = v;
+          else if ("maxjogadores".equals(k) || "max".equals(k) || "capacidade".equals(k) || "maxplayers".equals(k))
+            numMax = v;
         }
 
         // tornar chave imutável para uso dentro do listener
@@ -1169,7 +1191,7 @@ public class Jogo extends JFrame {
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.setBorder(new EmptyBorder(6, 4, 6, 4));
         String estaAndamento = "true".equals(andamento) ? "em andamento" : "disponível";
-        String text = "ID: " + id + " — " + estaAndamento + " — jogadores: " + num;
+        String text = "ID: " + id + " - " + estaAndamento + " - jogadores: " + num + " capacidade: " + numMax;
         JLabel lbl = new JLabel(text);
         row.add(lbl, BorderLayout.CENTER);
         // botão para entrar na partida
@@ -1195,11 +1217,12 @@ public class Jogo extends JFrame {
             }
           }
 
-          // Marcar este como 'entrou'
-          enterBtn.setText("entrou");
-          entrouPartidaId = idKey;
+          // Disable this button while awaiting server response to avoid duplicate
+          // requests.
+          enterBtn.setEnabled(false);
 
-          // Envia o comando para o servidor
+          // Envia o comando para o servidor. The button text will only change to
+          // "entrou" when the server confirms with an ENTARPARTIDA|200 response.
           connection.sendLine("ENTRARPARTIDA " + jogadorAtual + " " + token + " " + idKey);
         });
 
@@ -1472,6 +1495,43 @@ public class Jogo extends JFrame {
           } else {
             if (mensagensArea != null) {
               mensagensArea.append("Falha ao listar partidas: " + textoServer + "\n");
+            }
+          }
+          break;
+        }
+        case "ENTRARPARTIDA": {
+          // Server response to a request to enter a public game
+          String id = separarValores(valoresServer, "id");
+          if (id == null || id.isEmpty()) {
+            // Fallback: some servers may use 'partida' or 'game'
+            id = separarValores(valoresServer, "partida");
+            if (id == null || id.isEmpty())
+              id = separarValores(valoresServer, "game");
+          }
+
+          if ("200".equals(codigoServer)) {
+            if (id != null && publicGameButtons.containsKey(id)) {
+              JButton b = publicGameButtons.get(id);
+              if (b != null) {
+                b.setText("entrou");
+                b.setEnabled(false);
+              }
+            }
+            entrouPartidaId = id;
+            if (mensagensArea != null) {
+              mensagensArea.append("Entrou na partida: " + (id == null ? "?" : id) + "\n");
+            }
+          } else {
+            // Não altere para 'entrou' em caso de falha; reabilitar botão se existia
+            if (id != null && publicGameButtons.containsKey(id)) {
+              JButton b = publicGameButtons.get(id);
+              if (b != null) {
+                b.setText("entrar");
+                b.setEnabled(true);
+              }
+            }
+            if (mensagensArea != null) {
+              mensagensArea.append("Falha ao entrar na partida: " + textoServer + "\n");
             }
           }
           break;
@@ -1891,8 +1951,6 @@ public class Jogo extends JFrame {
             }
           } catch (Exception ignore) {
           }
-          // Log simples para ajudar debug se o evento foi recebido
-          System.out.println("DETECTADO: sonar at (" + sx + "," + sy + ") num=" + numStr);
           if (gameMessagesArea != null) {
             String msg = "Sonar detectou atividade";
             if (numStr != null)
@@ -1952,10 +2010,17 @@ public class Jogo extends JFrame {
             gameMessagesArea.append("Você foi morto: " + mensagem + "\n");
             gameMessagesArea.setCaretPosition(gameMessagesArea.getDocument().getLength());
           }
-          // Voltar para a Home e desabilitar ações locais
+          // Marcar como morto localmente, remover do tabuleiro e continuar na tela de
+          // jogo
+          jogadorMorto = true;
+          // Remove o marcador do jogador do tabuleiro
+          playerX = -1;
+          playerY = -1;
+          // Desabilitar ações locais (não é mais turno) e atualizar UI
           playerTurn = false;
           atualizarStatusTurno();
-          showHome();
+          // Repaint/atualiza tabuleiro para remover o jogador visualmente
+          atualizarTabuleiro();
           break;
         }
         case "VITORIA": {
@@ -2002,6 +2067,7 @@ public class Jogo extends JFrame {
             String nomeJogadorTurno = separarValores(valoresServer, "turno");
             boolean isPlayerTurn = jogadorAtual != null && jogadorAtual.equals(nomeJogadorTurno);
             playerTurn = isPlayerTurn;
+            nomeJogadorTurnoAtual = nomeJogadorTurno;
             atualizarStatusTurno();
           } else {
             // Pode ser um TURNO com código diferente (ex.: 408) indicando que o

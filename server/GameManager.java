@@ -48,7 +48,7 @@ public class GameManager {
   public void criarPartidas() {
     // Loop para criar partidas
     for (int i = 0; i < Constants.NUMERO_PARTIDAS; i++) {
-      partidas.add(new Partida(i + 1));
+      partidas.add(new Partida(i + 1, i / 2 + Constants.NUMERO_JOGADORES));
     }
   }
 
@@ -333,7 +333,7 @@ public class GameManager {
     jogoPartidas.remove(jogoPartida);
 
     // Se a partida que finalizou era uma pública notifica a todos
-    if(jogoPartida.getId() <= Constants.NUMERO_PARTIDAS) {
+    if (jogoPartida.getId() <= Constants.NUMERO_PARTIDAS) {
       notificarTodos(Constants.TIPOLISTARPARTIDAS, "200", "Partidas publicas", gerarListaPartidas());
     }
   }
@@ -412,8 +412,9 @@ public class GameManager {
             + " ou espacos em brancos ou caracteres especiais", "campo:nomeCliente");
         return;
       }
-      if(nomeCliente.length() > Constants.TAMANHOMAXNOMECLIENTE) {
-        enviarLinha(outToClient, tipo, "400", "Nome de cliente nao pode ter mais que " + Constants.TAMANHOMAXNOMECLIENTE + " caracteres",
+      if (nomeCliente.length() > Constants.TAMANHOMAXNOMECLIENTE) {
+        enviarLinha(outToClient, tipo, "400",
+            "Nome de cliente nao pode ter mais que " + Constants.TAMANHOMAXNOMECLIENTE + " caracteres",
             "campo:nomeCliente");
         return;
       }
@@ -507,7 +508,7 @@ public class GameManager {
 
     System.out.println("Cliente " + nomeCliente + " entrou na partida " + idPartida);
 
-    cliente.enviarLinha(tipo, "200", "Entrou na partida com sucesso", "");
+    cliente.enviarLinha(tipo, "200", "Entrou na partida com sucesso", "id:"+idPartida);
 
     // Tenta iniciar a partida
     tentarIniciarPartida(partidaEscolhida);
@@ -586,7 +587,7 @@ public class GameManager {
     clientes.add(clienteDesafiante);
 
     int idPartida = proximoIdAutoIncrement();
-    
+
     // Garante que não estão em nenhuma partida
     sairPartida(clienteDesafiado, false, tipo);
     sairPartida(clienteDesafiante, false, tipo);
