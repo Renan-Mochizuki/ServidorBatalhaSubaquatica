@@ -331,6 +331,11 @@ public class GameManager {
     // Cancela e remove o timer dessa partida
     cancelarTimerTurno(jogoPartida);
     jogoPartidas.remove(jogoPartida);
+
+    // Se a partida que finalizou era uma pública notifica a todos
+    if(jogoPartida.getId() <= Constants.NUMERO_PARTIDAS) {
+      notificarTodos(Constants.TIPOLISTARPARTIDAS, "200", "Partidas publicas", gerarListaPartidas());
+    }
   }
 
   // Método para enviar uma linha para o cliente evitando erros de conexão
@@ -366,6 +371,28 @@ public class GameManager {
       jogadoresServidor.append(Constants.SEPARADORITEM).append("nome:" + cliente.getNome());
     }
     String mensagem = "jogadores:{" + jogadoresServidor.toString() + "}";
+    return mensagem;
+  }
+
+  // Método para gerar a lista de partidas públicas
+  private String gerarListaPartidas() {
+    StringBuilder partidasServidor = new StringBuilder();
+    List<Partida> partidasSnapshot;
+
+    synchronized (partidas) {
+      partidasSnapshot = new ArrayList<>(partidas);
+    }
+
+    Iterator<Partida> it = partidasSnapshot.iterator();
+    while (it.hasNext()) {
+      Partida partida = it.next();
+      if (partidasServidor.isEmpty()) {
+        partidasServidor.append(partida.getInfo());
+        continue;
+      }
+      partidasServidor.append(Constants.SEPARADORITEM).append(partida.getInfo());
+    }
+    String mensagem = "partidas:{" + partidasServidor.toString() + "}";
     return mensagem;
   }
 
@@ -421,21 +448,7 @@ public class GameManager {
   }
 
   public void listarPartidasCliente(DataOutputStream outToClient, String tipo) {
-    StringBuilder partidasServidor = new StringBuilder();
-
-    synchronized (partidas) {
-      Iterator<Partida> it = partidas.iterator();
-      while (it.hasNext()) {
-        Partida partida = it.next();
-        if (partidasServidor.isEmpty()) {
-          partidasServidor.append(partida.getInfo());
-          continue;
-        }
-        partidasServidor.append(Constants.SEPARADORITEM).append(partida.getInfo());
-      }
-    }
-
-    enviarLinha(outToClient, tipo, "200", "Partidas publicas", "partidas:{" + partidasServidor.toString() + "}");
+    enviarLinha(outToClient, tipo, "200", "Partidas publicas", gerarListaPartidas());
   }
 
   public void listarJogadoresCliente(DataOutputStream outToClient, String tipo) {
@@ -493,6 +506,8 @@ public class GameManager {
 
     // Tenta iniciar a partida
     tentarIniciarPartida(partidaEscolhida);
+
+    notificarTodos(Constants.TIPOLISTARPARTIDAS, "200", "Partidas publicas", gerarListaPartidas());
   }
 
   public void desafiarCliente(Cliente clienteDesafiante, Cliente clienteDesafiado, String tipo) {
@@ -566,6 +581,10 @@ public class GameManager {
     clientes.add(clienteDesafiante);
 
     int idPartida = proximoIdAutoIncrement();
+    
+    // Garante que não estão em nenhuma partida
+    sairPartida(clienteDesafiado, false, tipo);
+    sairPartida(clienteDesafiante, false, tipo);
 
     clienteDesafiado.setIdPartida(idPartida);
     clienteDesafiante.setIdPartida(idPartida);

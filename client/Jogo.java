@@ -46,6 +46,12 @@ public class Jogo extends JFrame {
   private String desafioEnviadoPara = null;
   // Container para desafios recebidos
   private JPanel incomingChallengesPanel;
+  // Painel para listar partidas públicas (adicionado)
+  private JPanel publicGamesPanel;
+  // Map de botões por partida pública para controlar estado de "entrou"
+  private java.util.Map<String, JButton> publicGameButtons = new java.util.HashMap<>();
+  // Id da partida que o jogador marcou como 'entrou' (apenas uma)
+  private String entrouPartidaId = null;
   // Linha que mostra desafio enviado (aparecerá na mesma caixa de desafios)
   private JPanel outgoingChallengeRow = null;
 
@@ -213,7 +219,7 @@ public class Jogo extends JFrame {
     box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
     box.setBorder(new EmptyBorder(16, 16, 16, 16));
     box.setBackground(new Color(245, 248, 255));
-    box.setMaximumSize(new Dimension(500, 200));
+    box.setMaximumSize(new Dimension(700, 200));
 
     JLabel titulo = new JLabel("Batalha Subaquática");
     titulo.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -305,7 +311,7 @@ public class Jogo extends JFrame {
     leftTopBox.setAlignmentX(Component.LEFT_ALIGNMENT);
     // Forçar largura fixa para que a caixa não redimensione conforme o conteúdo.
     // Mantemos uma pequena margem lateral porque o painel central tem borda.
-    Dimension fixedSize = new Dimension(700, 160);
+    Dimension fixedSize = new Dimension(350, 160);
     leftTopBox.setPreferredSize(fixedSize);
     leftTopBox.setMaximumSize(new Dimension(fixedSize.width, 10000));
     leftTopBox.setMinimumSize(new Dimension(fixedSize.width, 40));
@@ -327,6 +333,35 @@ public class Jogo extends JFrame {
     // Adiciona a caixa de desafios recebidos acima do conteúdo central
     centro.add(leftTopBox);
     centro.add(Box.createVerticalStrut(12));
+
+    // --- Painel de Partidas Públicas (caixa vertical) ---
+    publicGamesPanel = new JPanel();
+    publicGamesPanel.setLayout(new BoxLayout(publicGamesPanel, BoxLayout.Y_AXIS));
+    publicGamesPanel.setBorder(BorderFactory.createCompoundBorder(
+        BorderFactory.createLineBorder(new Color(220, 220, 220)),
+        new EmptyBorder(8, 8, 8, 8)));
+    Dimension publicSize = new Dimension(300, 200);
+    publicGamesPanel.setPreferredSize(publicSize);
+    publicGamesPanel.setMaximumSize(new Dimension(publicSize.width, 10000));
+    JLabel pgTitle = new JLabel("Partidas públicas");
+    pgTitle.setFont(pgTitle.getFont().deriveFont(Font.BOLD, 12f));
+    pgTitle.setAlignmentX(Component.LEFT_ALIGNMENT);
+    publicGamesPanel.add(pgTitle);
+    publicGamesPanel.add(Box.createVerticalStrut(6));
+    // painel que conterá as linhas das partidas dentro de um scroll
+    JPanel publicGamesList = new JPanel();
+    publicGamesList.setLayout(new BoxLayout(publicGamesList, BoxLayout.Y_AXIS));
+    publicGamesList.setAlignmentX(Component.LEFT_ALIGNMENT);
+    JScrollPane publicScroll = new JScrollPane(publicGamesList,
+        ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+        ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+    publicScroll.setPreferredSize(new Dimension(publicSize.width - 8, 220));
+    publicGamesPanel.add(publicScroll);
+    publicGamesPanel.add(Box.createVerticalStrut(6));
+
+    // Guardar referência ao painel interno (onde as linhas serão adicionadas)
+    // usando the name property so we can find it later when updating
+    publicGamesList.setName("_publicGamesList");
 
     // Seção da direita: lista de jogadores com botões
     JPanel direita = new JPanel(new BorderLayout());
@@ -452,7 +487,13 @@ public class Jogo extends JFrame {
     mensagensPanel.add(chatRow, BorderLayout.SOUTH);
 
     home.add(northContainer, BorderLayout.NORTH);
-    home.add(centro, BorderLayout.CENTER);
+    // Colocar um painel intermediário para acomodar o centro e, à sua direita,
+    // a caixa de Partidas Públicas (assim fica entre o centro e a lista de
+    // jogadores que está no EAST).
+    JPanel mid = new JPanel(new BorderLayout());
+    mid.add(centro, BorderLayout.CENTER);
+    mid.add(publicGamesPanel, BorderLayout.EAST);
+    home.add(mid, BorderLayout.CENTER);
     home.add(direita, BorderLayout.EAST);
     home.add(mensagensPanel, BorderLayout.SOUTH);
     return home;
@@ -525,6 +566,18 @@ public class Jogo extends JFrame {
       outgoingChallengeRow = null;
       incomingChallengesPanel.revalidate();
       incomingChallengesPanel.repaint();
+    }
+
+    // Resetar botões de partidas públicas (se existirem)
+    if (publicGameButtons != null) {
+      for (java.util.Map.Entry<String, JButton> e : publicGameButtons.entrySet()) {
+        JButton b = e.getValue();
+        if (b != null) {
+          b.setText("entrar");
+          b.setEnabled(true);
+        }
+      }
+      entrouPartidaId = null;
     }
   }
 
@@ -1051,6 +1104,121 @@ public class Jogo extends JFrame {
     atualizarListaJogadores();
   }
 
+  // Atualiza a lista de partidas públicas a partir do campo 'partidas:{...}'
+  private void atualizarListaPartidasDoServidor(String listaCampo) {
+    if (listaCampo == null) {
+      listaCampo = "{}";
+    }
+    // localizar o painel interno onde colocaremos as linhas
+    JPanel publicGamesList = null;
+    for (java.awt.Component c : publicGamesPanel.getComponents()) {
+      if (c instanceof JScrollPane) {
+        JScrollPane sp = (JScrollPane) c;
+        java.awt.Component vp = sp.getViewport().getView();
+        if (vp instanceof JPanel && "_publicGamesList".equals(vp.getName())) {
+          publicGamesList = (JPanel) vp;
+          break;
+        }
+      }
+    }
+    if (publicGamesList == null) {
+      return; // sem onde mostrar
+    }
+
+    // limpa lista atual
+    publicGamesList.removeAll();
+    // limpar referências aos botões antigos para evitar leaks; manteremos
+    // novo mapa com as novas instâncias abaixo
+    publicGameButtons.clear();
+
+    // separar itens dentro de { ... }
+    String[] items = separarLista(listaCampo);
+    System.out.println(listaCampo);
+    if (items == null || items.length == 0) {
+      JLabel empty = new JLabel("(nenhuma partida pública)");
+      empty.setForeground(new Color(90, 90, 90));
+      empty.setAlignmentX(Component.LEFT_ALIGNMENT);
+      publicGamesList.add(empty);
+    } else {
+      for (String it : items) {
+        if (it == null || it.trim().isEmpty())
+          continue;
+        // cada item: id:1,andamento:true,numjogadores:2
+        String id = "?";
+        String andamento = "?";
+        String num = "?";
+        String[] parts = it.split(",");
+        for (String p : parts) {
+          String[] kv = p.split(":", 2);
+          if (kv.length < 2)
+            continue;
+          String k = kv[0].trim();
+          String v = kv[1].trim();
+          if ("id".equals(k))
+            id = v;
+          else if ("andamento".equals(k) || "emprogresso".equals(k))
+            andamento = v;
+          else if ("numjogadores".equals(k) || "num".equals(k))
+            num = v;
+        }
+
+        // tornar chave imutável para uso dentro do listener
+        final String idKey = id;
+
+        JPanel row = new JPanel(new BorderLayout());
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.setBorder(new EmptyBorder(6, 4, 6, 4));
+        String estaAndamento = "true".equals(andamento) ? "em andamento" : "disponível";
+        String text = "ID: " + id + " — " + estaAndamento + " — jogadores: " + num;
+        JLabel lbl = new JLabel(text);
+        row.add(lbl, BorderLayout.CENTER);
+        // botão para entrar na partida
+        JButton enterBtn = new JButton("entrar");
+        enterBtn.addActionListener(ev -> {
+          if (connection == null || !connection.isConnected()) {
+            JOptionPane.showMessageDialog(this, "Sem conexão com o servidor.", "Entrar partida",
+                JOptionPane.WARNING_MESSAGE);
+            return;
+          }
+          if (jogadorAtual == null || jogadorAtual.isEmpty() || token == null || token.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Você precisa estar logado para entrar em partidas.", "Entrar partida",
+                JOptionPane.WARNING_MESSAGE);
+            return;
+          }
+
+          // Resetar botão anterior, se existir e for diferente
+          if (entrouPartidaId != null && !entrouPartidaId.equals(idKey)) {
+            JButton prev = publicGameButtons.get(entrouPartidaId);
+            if (prev != null) {
+              prev.setText("entrar");
+              prev.setEnabled(true);
+            }
+          }
+
+          // Marcar este como 'entrou'
+          enterBtn.setText("entrou");
+          entrouPartidaId = idKey;
+
+          // Envia o comando para o servidor
+          connection.sendLine("ENTRARPARTIDA " + jogadorAtual + " " + token + " " + idKey);
+        });
+
+        // Se já estivermos marcados como tendo entrado nesta partida, ajustar o rótulo
+        if (entrouPartidaId != null && entrouPartidaId.equals(idKey)) {
+          enterBtn.setText("entrou");
+        }
+
+        publicGameButtons.put(idKey, enterBtn);
+        row.add(enterBtn, BorderLayout.EAST);
+        publicGamesList.add(row);
+        publicGamesList.add(Box.createVerticalStrut(4));
+      }
+    }
+
+    publicGamesList.revalidate();
+    publicGamesList.repaint();
+  }
+
   private int clamp(int v, int min, int max) {
     return Math.max(min, Math.min(max, v));
   }
@@ -1162,26 +1330,50 @@ public class Jogo extends JFrame {
 
   // Função que separa o valor de um campo específico da linha
   private String separarValores(String line, String campo) {
-    // Adiciona uma vírgula no final para facilitar o parsing do último campo
-    String temp = line + ",";
-    int startIndex = temp.indexOf(campo + ":");
+    if (line == null || campo == null)
+      return null;
 
+    String temp = line;
+    int startIndex = temp.indexOf(campo + ":");
     if (startIndex == -1) {
       return null; // Campo não encontrado
     }
 
     startIndex += (campo + ":").length();
 
-    // Caso especial: o campo "lista" termina com "}"
-    if (campo.equals("lista")) {
-      int endIndex = temp.indexOf("}", startIndex);
-      if (endIndex == -1)
-        return null;
-      return temp.substring(startIndex, endIndex + 1); // inclui o '}'
-    } else {
-      int endIndex = temp.indexOf(",", startIndex);
-      return temp.substring(startIndex, endIndex);
+    // pular espaços em branco após ':'
+    while (startIndex < temp.length() && Character.isWhitespace(temp.charAt(startIndex))) {
+      startIndex++;
     }
+
+    if (startIndex >= temp.length())
+      return null;
+
+    // Se o valor começa com '{', procure o '}' correspondente (suporta chaves
+    // aninhadas)
+    if (temp.charAt(startIndex) == '{') {
+      int depth = 0;
+      for (int i = startIndex; i < temp.length(); i++) {
+        char c = temp.charAt(i);
+        if (c == '{')
+          depth++;
+        else if (c == '}') {
+          depth--;
+          if (depth == 0) {
+            return temp.substring(startIndex, i + 1);
+          }
+        }
+      }
+      // Se não encontramos o fechamento, retornar null em vez de truncar
+      return null;
+    }
+
+    // Caso normal: valor sem chaves — termina na próxima vírgula ou fim da string
+    int endIndex = temp.indexOf(',', startIndex);
+    if (endIndex == -1) {
+      return temp.substring(startIndex);
+    }
+    return temp.substring(startIndex, endIndex);
   }
 
   // Função que separa os itens dentro de uma lista { ... }
@@ -1235,6 +1427,7 @@ public class Jogo extends JFrame {
             // Após entrar na Home, solicitar lista atual de jogadores
             if (connection != null && connection.isConnected()) {
               connection.sendLine("LISTARJOGADORES");
+              connection.sendLine("LISTARPARTIDAS");
             }
           } else {
             // Falha: mostrar a mensagem do servidor na label de status (sem popup)
@@ -1267,6 +1460,18 @@ public class Jogo extends JFrame {
             // erro ao listar – opcionalmente exibir no chat
             if (mensagensArea != null) {
               mensagensArea.append("Falha ao listar jogadores: " + textoServer + "\n");
+            }
+          }
+          break;
+        }
+        case "LISTARPARTIDAS": {
+          if ("200".equals(codigoServer)) {
+            String partidasCampo = separarValores(valoresServer, "partidas");
+            System.out.println("Partidas públicas recebidas: " + partidasCampo);
+            atualizarListaPartidasDoServidor(partidasCampo);
+          } else {
+            if (mensagensArea != null) {
+              mensagensArea.append("Falha ao listar partidas: " + textoServer + "\n");
             }
           }
           break;
