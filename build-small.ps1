@@ -41,6 +41,37 @@ function Find-JdkRoot {
 
 Write-Host "=== build-small: start ===" -ForegroundColor Cyan
 
+# Ensure build folders exist
+if (Test-Path build) {
+  # keep existing build contents
+} else {
+  New-Item -ItemType Directory -Force -Path build | Out-Null
+}
+New-Item -ItemType Directory -Force -Path (Join-Path 'build' 'input') | Out-Null
+
+Write-Host "Compiling Server and creating Server.jar..."
+& javac --release 21 -d build -sourcepath . .\classes\*.java .\server\*.java
+if ($LASTEXITCODE -ne 0) { Write-Error "javac failed for server sources (exit $LASTEXITCODE)"; exit 1 }
+jar cfe build\input\Server.jar server.Server -C build .
+if ($LASTEXITCODE -ne 0) { Write-Error "jar failed for Server.jar (exit $LASTEXITCODE)"; exit 1 }
+
+Write-Host "Compiling Jogo and creating Jogo.jar..."
+& javac --release 21 -d build -sourcepath . .\client\Jogo.java
+if ($LASTEXITCODE -ne 0) { Write-Error "javac failed for client Jogo (exit $LASTEXITCODE)"; exit 1 }
+jar cfe build\input\Jogo.jar client.Jogo -C build .
+if ($LASTEXITCODE -ne 0) { Write-Error "jar failed for Jogo.jar (exit $LASTEXITCODE)"; exit 1 }
+
+# get the full path to the jdeps executable
+$jdepsPath = (Get-Command jdeps -ErrorAction Stop).Source
+Write-Host "jdeps found at: $jdepsPath"
+
+# derive JDK root (go up two levels from bin\jdeps.exe)
+$jdkRoot = Split-Path -Parent (Split-Path -Parent $jdepsPath)
+Write-Host "Detected JDK root: $jdkRoot"
+
+Test-Path (Join-Path $jdkRoot 'bin\jlink.exe') ; Write-Host " jlink present?"
+Test-Path (Join-Path $jdkRoot 'bin\jpackage.exe') ; Write-Host " jpackage present?"
+
 $jdk = Find-JdkRoot -candidate $JdkPath
 if (-not $jdk) {
   Write-Error "JDK not found. Set JAVA_HOME or ensure javac is in PATH."
@@ -116,8 +147,11 @@ foreach ($app in $appList) {
 
   if (-not $SkipJPackage) {
     Write-Host "Running jpackage for $($app.AppName)..."
-    $dest = Join-Path $OutputDir $app.AppName
-    New-Item -ItemType Directory -Force -Path $dest | Out-Null
+    # jpackage will create a subfolder named after the app inside the dest folder.
+    # To avoid an extra nested folder (e.g. build\output\Servidor\Servidor\app.exe)
+    # pass the top-level output folder as --dest so jpackage will produce
+    # build\output\<AppName>\app.exe (desired layout).
+    $destRoot = (Resolve-Path $OutputDir).Path
 
     $jpackageArgs = @(
       "--input", (Resolve-Path $InputDir).Path,
@@ -126,7 +160,7 @@ foreach ($app in $appList) {
       "--main-class", $app.MainClass,
       "--type", "app-image",
       "--win-console",
-      "--dest", (Resolve-Path $dest).Path
+      "--dest", $destRoot
     )
     if ($runtimeOut) { $jpackageArgs += @("--runtime-image", (Resolve-Path $runtimeOut).Path) }
 
