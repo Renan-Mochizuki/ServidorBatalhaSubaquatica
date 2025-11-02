@@ -3,7 +3,7 @@ package classes;
 import java.util.HashMap;
 import java.util.Map;
 
-// -- TODAS ROTAS --
+// -- TODAS MENSAGENS DO CLIENTE --
 // CADASTRAR <nomeCliente>
 // LISTARPARTIDAS
 // LISTARJOGADORES

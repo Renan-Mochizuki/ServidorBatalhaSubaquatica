@@ -3,8 +3,6 @@ package classes;
 import java.util.*;
 
 public class Partida {
-  // Esses atributos são default para poderem ser acessados pela classe filha
-  // (JogoPartida)
   private int id;
   private List<Cliente> clientes;
   private boolean andamento; // true para partida em andamento
@@ -36,7 +34,8 @@ public class Partida {
   }
 
   public String getInfo() {
-    return "id:" + this.id + Constants.SEPARADORATRIBUTO + "andamento:" + this.andamento + Constants.SEPARADORATRIBUTO + "numjogadores:" + this.clientes.size();
+    return "id:" + this.id + Constants.SEPARADORATRIBUTO + "andamento:" + this.andamento + Constants.SEPARADORATRIBUTO
+        + "numjogadores:" + this.clientes.size();
   }
 
   public boolean partidaLotada() {

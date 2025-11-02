@@ -14,6 +14,7 @@ import java.io.*;
 import java.net.*;
 import java.util.function.Consumer;
 
+// Código quase inteiramente feito pelo agente Copilot, apenas algumas partes foram escritas manualmente
 /**
  * Janela principal do jogo.
  * Tela 1: input para digitar o nome do usuário e botão para continuar.

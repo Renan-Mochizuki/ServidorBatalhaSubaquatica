@@ -128,6 +128,7 @@ public class JogoPartida {
     }
   }
 
+  // Retorna true se todos os jogadores estiverem prontos
   public boolean todosJogadoresProntos() {
     boolean todosProntos = true;
     Iterator<Jogador> iterator = this.jogadores.iterator();
@@ -169,6 +170,7 @@ public class JogoPartida {
     return null;
   }
 
+  // Retorna true se o movimento foi bem sucedido
   public boolean movimento(String nomeJogador, int posicaoX, int posicaoY, boolean deslocamento) {
     Jogador jogador = buscarJogadorPorNome(nomeJogador);
     if (jogador == null) {
@@ -182,6 +184,7 @@ public class JogoPartida {
     return jogador.mover(posicaoX, posicaoY);
   }
 
+  // Retorna true se o ataque foi bem sucedido
   public boolean ataque(String nomeJogador, int posicaoX, int posicaoY, boolean deslocamento) {
     Jogador atacante = buscarJogadorPorNome(nomeJogador);
     if (atacante == null) {

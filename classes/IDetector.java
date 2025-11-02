@@ -20,7 +20,8 @@ public interface IDetector {
       return false;
     }
 
-    return this.getPosicao().distanciaPermitida(jogador.getPosicao().getX(), jogador.getPosicao().getY(), this.getAlcance(),
+    return this.getPosicao().distanciaPermitida(jogador.getPosicao().getX(), jogador.getPosicao().getY(),
+        this.getAlcance(),
         this.getModoAlcance());
   }
 }

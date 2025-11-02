@@ -37,3 +37,9 @@ Criar executaveis mais leves
 `javac --release 21 -d build -sourcepath . .\classes\*.java .\server\*.java && jar cfe build\input\Server.jar server.Server -C build .`
 `javac --release 21 -d build -sourcepath . .\client\Jogo.java && jar cfe build\input\Jogo.jar client.Jogo -C build .`
 Powershell: `.\build-small.ps1 -JdkPath $jdkRoot`
+
+
+
+Testar
+
+`powershell -ExecutionPolicy Bypass -File .\run_autoclients.ps1`
