@@ -1565,7 +1565,27 @@ public class Jogo extends JFrame {
             }
           } else {
             // Falha: mostrar a mensagem do servidor na label de status (sem popup)
-            String motivo = (textoServer != null && !textoServer.isEmpty()) ? textoServer : "Cadastro não realizado";
+            // Alguns servidores colocam detalhes adicionais no campo 'valoresServer'
+            // (por exemplo: partes extras após um '|'). Concatene textoServer e
+            // valoresServer para apresentar a mensagem completa.
+            // Reúna todas as partes após o comando/código (parts[2..]) para
+            // mostrar a mensagem completa enviada pelo servidor.
+            String motivo = "Cadastro não realizado";
+            if (parts != null && parts.length > 2) {
+              StringBuilder sb = new StringBuilder();
+              for (int i = 2; i < parts.length; i++) {
+                if (parts[i] == null)
+                  continue;
+                String p = parts[i].trim();
+                if (p.isEmpty())
+                  continue;
+                if (sb.length() > 0)
+                  sb.append(" ");
+                sb.append(p);
+              }
+              if (sb.length() > 0)
+                motivo = sb.toString();
+            }
             if (loginStatusLabel != null) {
               loginStatusLabel.setForeground(new Color(120, 0, 0));
               loginStatusLabel.setText(motivo);
