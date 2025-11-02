@@ -8,6 +8,7 @@ public class Constants {
   public static final int NUMERO_JOGADORES = 2;
   public static final int NUMERO_MAX_DISPOSITIVOS_JOGADOR = 4;
   public static final int NUMERO_PARTIDAS = 5;
+  public static final int TAMANHOMAXNOMECLIENTE = 25;
   public static final int TEMPO_TURNO = 15; // em segundos
   public static final boolean KEEPALIVE = true; // Ativa ou desativa o keepalive
 

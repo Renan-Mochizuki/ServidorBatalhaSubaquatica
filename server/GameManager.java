@@ -403,13 +403,18 @@ public class GameManager {
   public void cadastrarCliente(Map<String, Cliente> listaCliente, String nomeCliente, Socket connectionSocket,
       String tipo) {
     try {
+      DataOutputStream outToClient = new DataOutputStream(connectionSocket.getOutputStream());
       if (nomeCliente.contains(Constants.SEPARADORCLIENTE) || nomeCliente.contains(Constants.SEPARADOR)
           || nomeCliente.contains(" ") || nomeCliente.contains(Constants.SEPARADORATRIBUTO)
           || nomeCliente.contains(Constants.SEPARADORITEM) || !nomeCliente.matches("\\A\\p{ASCII}*\\z")) {
-        DataOutputStream outToClient = new DataOutputStream(connectionSocket.getOutputStream());
         enviarLinha(outToClient, tipo, "400", "Nome de cliente nao pode conter: " + Constants.SEPARADORCLIENTE
             + " " + Constants.SEPARADOR + " " + Constants.SEPARADORATRIBUTO + " " + Constants.SEPARADORITEM
             + " ou espacos em brancos ou caracteres especiais", "campo:nomeCliente");
+        return;
+      }
+      if(nomeCliente.length() > Constants.TAMANHOMAXNOMECLIENTE) {
+        enviarLinha(outToClient, tipo, "400", "Nome de cliente nao pode ter mais que " + Constants.TAMANHOMAXNOMECLIENTE + " caracteres",
+            "campo:nomeCliente");
         return;
       }
     } catch (IOException e) {
