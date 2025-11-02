@@ -147,10 +147,6 @@ public class Jogo extends JFrame {
   // Duração (ms) da marcação visual de ataque (X). Fica visível por 3 segundos.
   private static final int ATTACK_MARK_MS = 3000;
 
-  // Size (pixels) of each board cell. Change this to adjust square width.
-  // You can also call setCellSize(...) at runtime before showing the game.
-  private int cellSize = 32;
-
   private Boolean playerTurn = true; // controle de turno (null = aguardando/reservado)
   private JLabel turnoLabel; // label de status do turno
   private ClientConnection connection; // conexão com servidor (opcional)
@@ -166,7 +162,7 @@ public class Jogo extends JFrame {
 
   // Keepalive scheduler for periodic pings to the server
   private ScheduledExecutorService keepaliveScheduler = null;
-  private static final long KEEPALIVE_INTERVAL_SECONDS = 30;
+  private static final long KEEPALIVE_INTERVAL_SECONDS = 15;
 
   public Jogo() {
     super("Batalha Subaquática");
