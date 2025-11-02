@@ -305,6 +305,12 @@ public class GameManager {
       finalizarJogoPartida(jogoPartida);
       return true;
     }
+    if(jogoPartida.verificarNenhumJogadorRestante()) {
+      notificarJogadoresPartida(jogoPartida, Constants.TIPOFIMPARTIDA, "200", "Partida finalizada",
+          "vencedor:null");
+      finalizarJogoPartida(jogoPartida);
+      return true;
+    }
     return false;
   }
 

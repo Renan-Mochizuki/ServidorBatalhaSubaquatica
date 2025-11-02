@@ -294,6 +294,11 @@ public class JogoPartida {
     return null;
   }
 
+  // Método que verifica se não há nenhum jogador restante na partida
+  public Boolean verificarNenhumJogadorRestante() {
+    return this.jogadores.isEmpty();
+  }
+
   // Método para finalizar a partida, limpando os clientes e marcando a partida
   // como não em andamento caso a partida base não seja nula
   public void finalizarPartida() {
