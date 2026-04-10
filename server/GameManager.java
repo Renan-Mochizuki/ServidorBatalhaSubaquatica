@@ -182,6 +182,7 @@ public class GameManager {
   public void proximoTurnoPartida(JogoPartida jogoPartida) {
     // Cancela o timer do turno atual (para evitar disparo durante o processamento)
     cancelarTimerTurno(jogoPartida);
+    
     lidarJogadoresAtaques(jogoPartida);
 
     if (verificarFimJogoPartida(jogoPartida)) {
@@ -305,7 +306,7 @@ public class GameManager {
       finalizarJogoPartida(jogoPartida);
       return true;
     }
-    if(jogoPartida.verificarNenhumJogadorRestante()) {
+    if (jogoPartida.verificarNenhumJogadorRestante()) {
       notificarJogadoresPartida(jogoPartida, Constants.TIPOFIMPARTIDA, "200", "Partida finalizada",
           "vencedor:null");
       finalizarJogoPartida(jogoPartida);
@@ -444,7 +445,12 @@ public class GameManager {
     // Tenta adicionar o cliente na lista, esse método retorna o item anterior
     // daquela chave (nomecliente), ou seja, se não existir item com aquela chave,
     // retorna null
-    if (listaCliente.putIfAbsent(nomeCliente, novoCliente) != null) {
+
+    Cliente clienteExistente = listaCliente.putIfAbsent(nomeCliente, novoCliente);
+
+    // TODO: Melhorar a funcionalidade de reconexão
+
+    if (clienteExistente != null) {
       // Usa o cliente recém-criado (não persistido) apenas para responder nesta
       // conexão
       novoCliente.enviarLinha(tipo, "409", "Um cliente com esse nome ja existe", "");
@@ -514,7 +520,7 @@ public class GameManager {
 
     System.out.println("Cliente " + nomeCliente + " entrou na partida " + idPartida);
 
-    cliente.enviarLinha(tipo, "200", "Entrou na partida com sucesso", "id:"+idPartida);
+    cliente.enviarLinha(tipo, "200", "Entrou na partida com sucesso", "id:" + idPartida);
 
     // Tenta iniciar a partida
     tentarIniciarPartida(partidaEscolhida);

@@ -6,9 +6,8 @@ import java.util.*;
 import classes.*;
 
 public class Server {
-  // Até então eu havia feito toda a lógica dentro do ClientHandler sem se
-  // preocupar com condições de corrida ou uma melhor separação de
-  // responsabilidades essa classe tem o intuito de tentar melhorar isso
+  // A classe GameManager tem a responsabilidade de gerenciar toda a lógica do
+  // jogo, como cadastro de clientes, criação de partidas, etc
   private final GameManager gameManager = new GameManager();
   private final Tradutor tradutor = new Tradutor();
 
@@ -553,13 +552,15 @@ public class Server {
     // Código para testar várias portas se a porta padrão já estiver em uso
     int basePort = Constants.PORTA_SERVIDOR;
     int tryPort = basePort;
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < 10; i++) {
       try {
         welcomeSocket = new ServerSocket(tryPort);
         System.out.println("Servidor iniciado na porta " + tryPort);
         break;
       } catch (java.net.BindException be) {
         tryPort++;
+      } catch (IOException ioe) {
+        ioe.printStackTrace();
       }
     }
 
